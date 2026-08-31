@@ -1,0 +1,80 @@
+{
+  "name": "Mountain Security Services SGMS",
+  "short_name": "Mountain SGMS",
+  "description": "Complete Security Agency Management System & Double-Entry Accounting System for Mountain Security Services Pvt. (Ltd.)",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#090d16",
+  "theme_color": "#0284c7",
+  "categories": ["business", "productivity", "finance", "security"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Salary Slips",
+      "short_name": "Salary Slips",
+      "description": "Generate and print official Mountain Security salary slips",
+      "url": "/#salary-slips",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Double-Entry Vouchers",
+      "short_name": "Vouchers",
+      "description": "Create Cash/Bank receipts and payment vouchers",
+      "url": "/#vouchers",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Armoury & Weapons",
+      "short_name": "Armoury",
+      "description": "Manage firearms and security guard assignments",
+      "url": "/#weapons",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Guards Directory",
+      "short_name": "Guards",
+      "description": "View and deploy active security personnel",
+      "url": "/#guards",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "Mountain Security Services SGMS Desktop Command Center"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Mountain SGMS Android Mobile Guard & Duty Management"
+    }
+  ]
+}
