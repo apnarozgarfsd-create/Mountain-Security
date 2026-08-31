@@ -23,6 +23,7 @@ export const VouchersView: React.FC = () => {
     guards,
     createVoucher,
     cancelVoucher,
+    deleteVoucher,
     triggerPrint,
   } = useApp();
 
@@ -30,6 +31,7 @@ export const VouchersView: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('All');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [cancelModalVoucher, setCancelModalVoucher] = useState<Voucher | null>(null);
+  const [deleteModalVoucher, setDeleteModalVoucher] = useState<Voucher | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -387,8 +389,18 @@ export const VouchersView: React.FC = () => {
                         title="Reverse / Cancel Voucher"
                       >
                         <XCircle className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Cancel</span>
                       </button>
                     )}
+
+                    <button
+                      onClick={() => setDeleteModalVoucher(v)}
+                      className="inline-flex items-center gap-1 px-2 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded font-semibold text-xs border border-rose-800/60 cursor-pointer"
+                      title="Permanently Delete Voucher"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -693,6 +705,52 @@ export const VouchersView: React.FC = () => {
                 className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg cursor-pointer disabled:opacity-50"
               >
                 Confirm Reversal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Permanent Delete Voucher */}
+      {deleteModalVoucher && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-800/80 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-950/80 border border-rose-700/60 rounded-xl text-rose-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Delete Voucher #{deleteModalVoucher.voucherNo}?
+                </h3>
+                <p className="text-xs text-rose-300 font-medium">
+                  {deleteModalVoucher.voucherType} Voucher • PKR {deleteModalVoucher.totalDebit.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3 rounded-xl border border-slate-800">
+              {deleteModalVoucher.status === 'Posted'
+                ? '⚠️ This voucher is currently POSTED. Deleting it will automatically reverse all debit & credit postings from affected account balances and permanently remove the record.'
+                : 'This cancelled voucher record will be permanently deleted from the system.'}
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteModalVoucher(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteVoucher(deleteModalVoucher.id);
+                  setDeleteModalVoucher(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl cursor-pointer shadow-lg shadow-rose-950/50 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Yes, Delete Voucher</span>
               </button>
             </div>
           </div>

@@ -18,30 +18,44 @@ import {
   initialWeapons,
 } from '../data/initialData';
 import {
+  initialCashTransactions,
+  initialExpenseCategories,
+  initialFinanceAccounts,
+  initialParties,
+} from '../data/multiAccountSeedData';
+import {
   Account,
   AttendanceMonthlySummary,
   AttendanceStatus,
   AuditLog,
+  CashTransaction,
   Client,
   ClientInvoice,
   CompanySettings,
+  DailyReconciliationSummary,
   DEFAULT_ROLE_PASSWORDS,
+  ExpenseCategory,
+  ExpenseSubcategory,
+  FinanceAccount,
   Guard,
   GuardAssignmentHistory,
   GuardAttendanceRecord,
   GuardIssuedItem,
+  Party,
   Product,
   RoleSecuritySettings,
   SalarySlip,
   SearchResultItem,
   Site,
   StockTransaction,
+  TransactionDirection,
   UserRole,
   Voucher,
   Weapon,
   WeaponAssignmentHistory,
 } from '../types';
 import { numberToWordsPKR } from '../utils/formatters';
+
 
 interface PrintDocumentPayload {
   type: 'salary-slip' | 'voucher' | 'weapon-slip' | 'uniform-slip' | 'client-invoice' | 'account-ledger' | 'general-report' | 'attendance-sheet';
@@ -71,6 +85,46 @@ interface AppContextType {
   clientInvoices: ClientInvoice[];
   auditLogs: AuditLog[];
   attendanceRecords: GuardAttendanceRecord[];
+
+  // Multi-Account Expense & Ledger System State
+  financeAccounts: FinanceAccount[];
+  expenseCategories: ExpenseCategory[];
+  parties: Party[];
+  cashTransactions: CashTransaction[];
+
+  // Multi-Account Expense & Ledger Actions
+  addFinanceAccount: (account: Omit<FinanceAccount, 'id' | 'createdAt'>) => FinanceAccount;
+  updateFinanceAccount: (id: string, updates: Partial<FinanceAccount>) => void;
+  deleteFinanceAccount: (id: string) => { success: boolean; error?: string };
+  addExpenseCategory: (category: Omit<ExpenseCategory, 'id'>) => ExpenseCategory;
+  updateExpenseCategory: (id: string, updates: Partial<ExpenseCategory>) => void;
+  deleteExpenseCategory: (id: string) => void;
+  addParty: (party: Omit<Party, 'id' | 'createdAt'>) => Party;
+  updateParty: (id: string, updates: Partial<Party>) => void;
+  deleteParty: (id: string) => void;
+  addCashTransaction: (txn: Omit<CashTransaction, 'id' | 'createdAt'>) => CashTransaction;
+  updateCashTransaction: (id: string, updates: Partial<CashTransaction>) => void;
+  deleteCashTransaction: (id: string) => void;
+  duplicateCashTransaction: (id: string) => CashTransaction | null;
+  executeAccountTransfer: (params: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    date: string;
+    description: string;
+    createdBy: string;
+  }) => { outTxn: CashTransaction; inTxn: CashTransaction };
+  importTransactionsFromCsv: (parsedRows: any[]) => { successCount: number; errors: string[] };
+  getAccountLiveBalance: (accountId: string) => number;
+  getAllAccountsLiveBalances: () => Record<string, number>;
+  getDailyReconciliation: (date: string, accountId?: string) => DailyReconciliationSummary[];
+  getPartyLedger: (partyId: string) => {
+    party: Party | undefined;
+    transactions: CashTransaction[];
+    totalIn: number;
+    totalOut: number;
+    netBalance: number;
+  };
 
   // Modals & Search
   isSearchOpen: boolean;
@@ -199,6 +253,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
   const [attendanceRecords, setAttendanceRecords] = useState<GuardAttendanceRecord[]>(initialAttendanceRecords);
 
+  // Multi-Account Expense & Ledger System State
+  const [financeAccounts, setFinanceAccounts] = useState<FinanceAccount[]>(initialFinanceAccounts);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(initialExpenseCategories);
+  const [parties, setParties] = useState<Party[]>(initialParties);
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(initialCashTransactions);
+
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [printPayload, setPrintPayload] = useState<PrintDocumentPayload | null>(null);
@@ -224,6 +284,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.clientInvoices) setClientInvoices(parsed.clientInvoices);
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
         if (parsed.companySettings) setCompanySettings(parsed.companySettings);
+        if (parsed.financeAccounts && Array.isArray(parsed.financeAccounts) && parsed.financeAccounts.length > 0) {
+          setFinanceAccounts(parsed.financeAccounts);
+        }
+        if (parsed.expenseCategories && Array.isArray(parsed.expenseCategories) && parsed.expenseCategories.length > 0) {
+          setExpenseCategories(parsed.expenseCategories);
+        }
+        if (parsed.parties && Array.isArray(parsed.parties) && parsed.parties.length > 0) {
+          setParties(parsed.parties);
+        }
+        if (parsed.cashTransactions && Array.isArray(parsed.cashTransactions) && parsed.cashTransactions.length > 0) {
+          setCashTransactions(parsed.cashTransactions);
+        }
         if (parsed.securitySettings) {
           setSecuritySettings({
             ...initialSecuritySettings,
@@ -265,6 +337,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         companySettings,
         securitySettings,
         attendanceRecords,
+        financeAccounts,
+        expenseCategories,
+        parties,
+        cashTransactions,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (e) {
@@ -288,6 +364,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     companySettings,
     securitySettings,
     attendanceRecords,
+    financeAccounts,
+    expenseCategories,
+    parties,
+    cashTransactions,
   ]);
 
   const logAudit = (action: string, module: string, recordReference: string, details: string) => {
@@ -1243,8 +1323,447 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteVoucher = (id: string) => {
     const voucher = vouchers.find((v) => v.id === id);
+    if (!voucher) return;
+
+    // If deleting an active posted voucher, reverse the debit/credit effects first
+    if (voucher.status === 'Posted') {
+      setAccounts((prev) => {
+        return prev.map((acc) => {
+          const matchingEntries = voucher.entries.filter((e) => e.accountId === acc.id);
+          if (matchingEntries.length === 0) return acc;
+
+          let delta = 0;
+          matchingEntries.forEach((entry) => {
+            const deb = Number(entry.debit) || 0;
+            const cred = Number(entry.credit) || 0;
+
+            if (acc.category === 'Asset' || acc.category === 'Expense') {
+              delta -= deb - cred;
+            } else {
+              delta -= cred - deb;
+            }
+          });
+
+          return {
+            ...acc,
+            currentBalance: acc.currentBalance + delta,
+          };
+        });
+      });
+    }
+
     setVouchers((prev) => prev.filter((v) => v.id !== id));
-    logAudit('Voucher Deleted', 'Accounting', voucher?.voucherNo || id, `Deleted voucher #${voucher?.voucherNo || id}`);
+    logAudit(
+      'Voucher Deleted',
+      'Accounting',
+      voucher.voucherNo,
+      `Permanently deleted ${voucher.voucherType} Voucher #${voucher.voucherNo} (PKR ${voucher.totalDebit.toLocaleString()})`
+    );
+  };
+
+  // ==========================================================
+  // MULTI-ACCOUNT EXPENSE & LEDGER IMPLEMENTATIONS
+  // ==========================================================
+
+  const addFinanceAccount = (accountData: Omit<FinanceAccount, 'id' | 'createdAt'>): FinanceAccount => {
+    const id = `FA-${Date.now()}`;
+    const newAcc: FinanceAccount = {
+      ...accountData,
+      id,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    setFinanceAccounts((prev) => [...prev, newAcc]);
+    logAudit('Finance Account Added', 'Finance Ledger', newAcc.name, `Created ${newAcc.type.toUpperCase()} account: ${newAcc.name} with opening PKR ${newAcc.openingBalance.toLocaleString()}`);
+    return newAcc;
+  };
+
+  const updateFinanceAccount = (id: string, updates: Partial<FinanceAccount>) => {
+    setFinanceAccounts((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, ...updates } : a))
+    );
+    logAudit('Finance Account Updated', 'Finance Ledger', id, `Updated account properties for ID: ${id}`);
+  };
+
+  const deleteFinanceAccount = (id: string): { success: boolean; error?: string } => {
+    const target = financeAccounts.find((a) => a.id === id);
+    if (!target) return { success: false, error: 'Account not found.' };
+
+    const hasTxns = cashTransactions.some((t) => t.accountId === id);
+    if (hasTxns) {
+      // Archive instead of delete to preserve ledger integrity
+      setFinanceAccounts((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: 'archived' } : a))
+      );
+      logAudit('Finance Account Archived', 'Finance Ledger', target.name, `Archived account ${target.name} because it contains historical transactions.`);
+      return { success: true };
+    }
+
+    setFinanceAccounts((prev) => prev.filter((a) => a.id !== id));
+    logAudit('Finance Account Deleted', 'Finance Ledger', target.name, `Deleted unused account: ${target.name}`);
+    return { success: true };
+  };
+
+  const addExpenseCategory = (categoryData: Omit<ExpenseCategory, 'id'>): ExpenseCategory => {
+    const id = `CAT-${Date.now()}`;
+    const newCat: ExpenseCategory = {
+      ...categoryData,
+      id,
+    };
+    setExpenseCategories((prev) => [...prev, newCat]);
+    logAudit('Category Created', 'Finance Ledger', newCat.name, `Added Head A/C category: ${newCat.name}`);
+    return newCat;
+  };
+
+  const updateExpenseCategory = (id: string, updates: Partial<ExpenseCategory>) => {
+    setExpenseCategories((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+    );
+    logAudit('Category Updated', 'Finance Ledger', id, `Updated category properties for ${id}`);
+  };
+
+  const deleteExpenseCategory = (id: string) => {
+    const cat = expenseCategories.find((c) => c.id === id);
+    setExpenseCategories((prev) => prev.filter((c) => c.id !== id));
+    logAudit('Category Deleted', 'Finance Ledger', cat?.name || id, `Deleted category ${cat?.name || id}`);
+  };
+
+  const addParty = (partyData: Omit<Party, 'id' | 'createdAt'>): Party => {
+    const id = `PTY-${Date.now()}`;
+    const newParty: Party = {
+      ...partyData,
+      id,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    setParties((prev) => [...prev, newParty]);
+    logAudit('Party Created', 'Party Ledgers', newParty.name, `Added party/person: ${newParty.name} (${newParty.roleRelation})`);
+    return newParty;
+  };
+
+  const updateParty = (id: string, updates: Partial<Party>) => {
+    setParties((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
+    );
+    logAudit('Party Updated', 'Party Ledgers', id, `Updated party details for ${id}`);
+  };
+
+  const deleteParty = (id: string) => {
+    const party = parties.find((p) => p.id === id);
+    setParties((prev) => prev.filter((p) => p.id !== id));
+    logAudit('Party Deleted', 'Party Ledgers', party?.name || id, `Deleted party ${party?.name || id}`);
+  };
+
+  const getAccountLiveBalance = (accountId: string): number => {
+    const acc = financeAccounts.find((a) => a.id === accountId);
+    if (!acc) return 0;
+
+    let balance = Number(acc.openingBalance) || 0;
+    cashTransactions.forEach((txn) => {
+      if (txn.accountId === accountId) {
+        if (txn.direction === 'IN') {
+          balance += Number(txn.amount) || 0;
+        } else if (txn.direction === 'OUT') {
+          balance -= Number(txn.amount) || 0;
+        }
+      }
+    });
+    return balance;
+  };
+
+  const getAllAccountsLiveBalances = (): Record<string, number> => {
+    const balances: Record<string, number> = {};
+    financeAccounts.forEach((acc) => {
+      balances[acc.id] = getAccountLiveBalance(acc.id);
+    });
+    return balances;
+  };
+
+  const addCashTransaction = (txnData: Omit<CashTransaction, 'id' | 'createdAt'>): CashTransaction => {
+    const id = `TXN-${Date.now()}`;
+    const acc = financeAccounts.find((a) => a.id === txnData.accountId);
+    const cat = expenseCategories.find((c) => c.id === txnData.categoryId);
+    const party = txnData.partyId ? parties.find((p) => p.id === txnData.partyId) : undefined;
+
+    const newTxn: CashTransaction = {
+      ...txnData,
+      id,
+      accountName: acc?.name || txnData.accountName,
+      categoryName: cat?.name || txnData.categoryName,
+      partyName: party?.name || txnData.partyName,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    setCashTransactions((prev) => [newTxn, ...prev]);
+    logAudit(
+      'Transaction Added',
+      'Finance Ledger',
+      newTxn.id,
+      `[${newTxn.direction}] PKR ${newTxn.amount.toLocaleString()} in ${acc?.name || 'Account'} (${newTxn.description})`
+    );
+    return newTxn;
+  };
+
+  const updateCashTransaction = (id: string, updates: Partial<CashTransaction>) => {
+    setCashTransactions((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const acc = updates.accountId ? financeAccounts.find((a) => a.id === updates.accountId) : undefined;
+        const cat = updates.categoryId ? expenseCategories.find((c) => c.id === updates.categoryId) : undefined;
+        const party = updates.partyId ? parties.find((p) => p.id === updates.partyId) : undefined;
+
+        return {
+          ...t,
+          ...updates,
+          accountName: acc ? acc.name : t.accountName,
+          categoryName: cat ? cat.name : t.categoryName,
+          partyName: updates.partyId !== undefined ? (party ? party.name : undefined) : t.partyName,
+        };
+      })
+    );
+    logAudit('Transaction Updated', 'Finance Ledger', id, `Edited cashbook entry ${id}`);
+  };
+
+  const deleteCashTransaction = (id: string) => {
+    const txn = cashTransactions.find((t) => t.id === id);
+    if (!txn) return;
+
+    if (txn.transferGroupId) {
+      // If it's part of an account transfer, delete paired counterpart as well!
+      setCashTransactions((prev) => prev.filter((t) => t.transferGroupId !== txn.transferGroupId && t.id !== id));
+      logAudit(
+        'Transfer Deleted',
+        'Finance Ledger',
+        txn.id,
+        `Deleted paired account transfer #${txn.transferGroupId} (PKR ${txn.amount.toLocaleString()})`
+      );
+    } else {
+      setCashTransactions((prev) => prev.filter((t) => t.id !== id));
+      logAudit(
+        'Transaction Deleted',
+        'Finance Ledger',
+        txn.id,
+        `Deleted [${txn.direction}] transaction PKR ${txn.amount.toLocaleString()} (${txn.description})`
+      );
+    }
+  };
+
+  const duplicateCashTransaction = (id: string): CashTransaction | null => {
+    const existing = cashTransactions.find((t) => t.id === id);
+    if (!existing) return null;
+
+    const duplicated: CashTransaction = {
+      ...existing,
+      id: `TXN-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0], // Default to today
+      transferGroupId: undefined,
+      voucherNo: undefined,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    setCashTransactions((prev) => [duplicated, ...prev]);
+    logAudit(
+      'Transaction Duplicated',
+      'Finance Ledger',
+      duplicated.id,
+      `Repeated entry: PKR ${duplicated.amount.toLocaleString()} (${duplicated.description})`
+    );
+    return duplicated;
+  };
+
+  const executeAccountTransfer = (params: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    date: string;
+    description: string;
+    createdBy: string;
+  }): { outTxn: CashTransaction; inTxn: CashTransaction } => {
+    const transferGroupId = `TRF-GRP-${Date.now()}`;
+    const fromAcc = financeAccounts.find((a) => a.id === params.fromAccountId);
+    const toAcc = financeAccounts.find((a) => a.id === params.toAccountId);
+
+    const outTxn: CashTransaction = {
+      id: `TXN-${Date.now()}-OUT`,
+      date: params.date,
+      accountId: params.fromAccountId,
+      accountName: fromAcc?.name || 'Source Account',
+      categoryId: 'CAT-TRANSFER',
+      categoryName: 'Account Transfer',
+      subcategoryId: 'SUB-TR-3',
+      subcategoryName: 'Inter-Account Fund Transfer',
+      description: `Transfer to ${toAcc?.name || 'Target Account'}: ${params.description}`,
+      direction: 'OUT',
+      amount: params.amount,
+      createdBy: params.createdBy,
+      transferGroupId,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    const inTxn: CashTransaction = {
+      id: `TXN-${Date.now()}-IN`,
+      date: params.date,
+      accountId: params.toAccountId,
+      accountName: toAcc?.name || 'Target Account',
+      categoryId: 'CAT-TRANSFER',
+      categoryName: 'Account Transfer',
+      subcategoryId: 'SUB-TR-3',
+      subcategoryName: 'Inter-Account Fund Transfer',
+      description: `Transfer received from ${fromAcc?.name || 'Source Account'}: ${params.description}`,
+      direction: 'IN',
+      amount: params.amount,
+      createdBy: params.createdBy,
+      transferGroupId,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    setCashTransactions((prev) => [outTxn, inTxn, ...prev]);
+    logAudit(
+      'Account Transfer Executed',
+      'Finance Ledger',
+      transferGroupId,
+      `Transferred PKR ${params.amount.toLocaleString()} from ${fromAcc?.name} to ${toAcc?.name}`
+    );
+
+    return { outTxn, inTxn };
+  };
+
+  const importTransactionsFromCsv = (parsedRows: any[]): { successCount: number; errors: string[] } => {
+    const errors: string[] = [];
+    let successCount = 0;
+    const newTxns: CashTransaction[] = [];
+
+    parsedRows.forEach((row, index) => {
+      try {
+        const date = row.Date || row.date || new Date().toISOString().split('T')[0];
+        const headAc = row['Head A/C'] || row.HeadAC || row.category || 'Office';
+        const subHeadAc = row['Sub-Head A/C'] || row.SubHeadAC || row.subcategory || '';
+        const description = row.Description || row.description || row.Particulars || 'Imported Entry';
+        const accountNameRaw = row.Account || row.account || '';
+
+        const inAmount = Number(row.IN || row.In || row.Receipt || 0);
+        const outAmount = Number(row.OUT || row.Out || row.Payment || 0);
+
+        if (inAmount <= 0 && outAmount <= 0) {
+          errors.push(`Row ${index + 1}: Amount is missing or zero.`);
+          return;
+        }
+
+        const direction: TransactionDirection = inAmount > 0 ? 'IN' : 'OUT';
+        const amount = inAmount > 0 ? inAmount : outAmount;
+
+        // Match or resolve Account
+        let targetAcc = financeAccounts.find(
+          (a) => a.name.toLowerCase().includes(accountNameRaw.toLowerCase()) || a.id === accountNameRaw
+        );
+        if (!targetAcc) {
+          targetAcc = financeAccounts[0];
+        }
+
+        // Match or resolve Category
+        let targetCat = expenseCategories.find(
+          (c) => c.name.toLowerCase().includes(headAc.toLowerCase()) || c.id === headAc
+        );
+        if (!targetCat) {
+          targetCat = expenseCategories.find((c) => c.name === 'Office') || expenseCategories[0];
+        }
+
+        const newTxn: CashTransaction = {
+          id: `TXN-IMP-${Date.now()}-${index}`,
+          date,
+          accountId: targetAcc.id,
+          accountName: targetAcc.name,
+          categoryId: targetCat.id,
+          categoryName: targetCat.name,
+          subcategoryName: subHeadAc,
+          description,
+          direction,
+          amount,
+          createdBy: currentUserRole === 'Super Admin' ? 'Ali Akbar' : currentUserRole,
+          createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+        };
+
+        newTxns.push(newTxn);
+        successCount++;
+      } catch (err: any) {
+        errors.push(`Row ${index + 1}: ${err.message || 'Parsing error'}`);
+      }
+    });
+
+    if (newTxns.length > 0) {
+      setCashTransactions((prev) => [...newTxns, ...prev]);
+      logAudit(
+        'CSV Data Imported',
+        'Finance Ledger',
+        `${successCount} rows`,
+        `Imported ${successCount} historical cashbook entries from spreadsheet.`
+      );
+    }
+
+    return { successCount, errors };
+  };
+
+  const getDailyReconciliation = (targetDate: string, accountId?: string): DailyReconciliationSummary[] => {
+    const targetAccounts = accountId
+      ? financeAccounts.filter((a) => a.id === accountId)
+      : financeAccounts;
+
+    return targetAccounts.map((acc) => {
+      // 1. Opening balance before targetDate
+      let opening = Number(acc.openingBalance) || 0;
+      let totalIn = 0;
+      let totalOut = 0;
+      let count = 0;
+
+      cashTransactions.forEach((txn) => {
+        if (txn.accountId === acc.id) {
+          if (txn.date < targetDate) {
+            if (txn.direction === 'IN') opening += Number(txn.amount) || 0;
+            if (txn.direction === 'OUT') opening -= Number(txn.amount) || 0;
+          } else if (txn.date === targetDate) {
+            count++;
+            if (txn.direction === 'IN') totalIn += Number(txn.amount) || 0;
+            if (txn.direction === 'OUT') totalOut += Number(txn.amount) || 0;
+          }
+        }
+      });
+
+      const closing = opening + totalIn - totalOut;
+
+      return {
+        date: targetDate,
+        accountId: acc.id,
+        accountName: acc.name,
+        openingBalance: opening,
+        totalIn,
+        totalOut,
+        closingBalance: closing,
+        transactionCount: count,
+      };
+    });
+  };
+
+  const getPartyLedger = (partyId: string) => {
+    const party = parties.find((p) => p.id === partyId);
+    const txns = cashTransactions.filter((t) => t.partyId === partyId);
+
+    const totalIn = txns
+      .filter((t) => t.direction === 'IN')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const totalOut = txns
+      .filter((t) => t.direction === 'OUT')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const openingAdvance = Number(party?.openingAdvanceBalance) || 0;
+    // Net balance = opening advance + payments given to party (OUT) - receipts from party (IN)
+    const netBalance = openingAdvance + totalOut - totalIn;
+
+    return {
+      party,
+      transactions: txns,
+      totalIn,
+      totalOut,
+      netBalance,
+    };
   };
 
   // --- Salary Slips & Invoices ---
@@ -1619,6 +2138,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClientInvoices(initialClientInvoices);
     setAuditLogs(initialAuditLogs);
     setAttendanceRecords(initialAttendanceRecords);
+    setFinanceAccounts(initialFinanceAccounts);
+    setExpenseCategories(initialExpenseCategories);
+    setParties(initialParties);
+    setCashTransactions(initialCashTransactions);
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     logAudit('Factory Reset', 'Settings', 'RESET', 'Restored all master data to default Mountain Security initial dataset');
   };
@@ -1689,6 +2212,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clientInvoices,
       auditLogs,
       attendanceRecords,
+      financeAccounts,
+      expenseCategories,
+      parties,
+      cashTransactions,
     };
     return JSON.stringify(fullBackup, null, 2);
   };
@@ -1735,6 +2262,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clientInvoices,
         auditLogs,
         attendanceRecords,
+        financeAccounts,
+        expenseCategories,
+        parties,
+        cashTransactions,
+        addFinanceAccount,
+        updateFinanceAccount,
+        deleteFinanceAccount,
+        addExpenseCategory,
+        updateExpenseCategory,
+        deleteExpenseCategory,
+        addParty,
+        updateParty,
+        deleteParty,
+        addCashTransaction,
+        updateCashTransaction,
+        deleteCashTransaction,
+        duplicateCashTransaction,
+        executeAccountTransfer,
+        importTransactionsFromCsv,
+        getAccountLiveBalance,
+        getAllAccountsLiveBalances,
+        getDailyReconciliation,
+        getPartyLedger,
         isSearchOpen,
         setIsSearchOpen,
         printPayload,

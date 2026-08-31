@@ -123,9 +123,10 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     {
       groupTitle: 'FINANCE & ACCOUNTS',
       items: [
+        { id: 'multi-account-expense', label: 'Multi-Account Cashbook', icon: <Wallet className="w-4 h-4 text-emerald-400" />, badge: 'Live Ledger', badgeColor: 'bg-emerald-900/80 text-emerald-200' },
         { id: 'salary-slips', label: 'Salary Slips (MSS Slip)', icon: <FileText className="w-4 h-4 text-emerald-400" />, badge: 'Print' },
         { id: 'vouchers', label: 'Double-Entry Vouchers', icon: <Receipt className="w-4 h-4" />, badge: vouchers.length },
-        { id: 'chart-of-accounts', label: 'Chart of Accounts', icon: <Wallet className="w-4 h-4" /> },
+        { id: 'chart-of-accounts', label: 'Chart of Accounts', icon: <Building className="w-4 h-4" /> },
         { id: 'financial-reports', label: 'Ledgers & Statements', icon: <TrendingUp className="w-4 h-4" /> },
       ],
     },

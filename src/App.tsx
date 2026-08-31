@@ -7,6 +7,7 @@ import { ClientsPage } from './components/clients/ClientsPage';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { PrintModal } from './components/common/PrintModal';
 import { MainDashboard } from './components/dashboard/MainDashboard';
+import { MultiAccountExpenseView } from './components/finance/MultiAccountExpenseView';
 import { GuardHistoryView } from './components/guards/GuardHistoryView';
 import { GuardsDirectoryView } from './components/guards/GuardsDirectoryView';
 import { InventoryProductsView } from './components/inventory/InventoryProductsView';
@@ -53,6 +54,10 @@ const AppContent: React.FC = () => {
         return <InventoryProductsView />;
       case 'inventory-history':
         return <InventoryTransactionsView />;
+      case 'multi-account-expense':
+      case 'finance':
+      case 'cashbook':
+        return <MultiAccountExpenseView />;
       case 'salary-slips':
         return <SalarySlipsView />;
       case 'vouchers':

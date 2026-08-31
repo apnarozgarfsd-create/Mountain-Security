@@ -113,11 +113,19 @@ export const MainDashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('salary-slips')}
+              onClick={() => setActiveTab('multi-account-expense')}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer hover:shadow-emerald-600/20 hover:-translate-y-0.5"
             >
-              <FileText className="w-4 h-4" />
-              <span>Official Salary Slip</span>
+              <Wallet className="w-4 h-4" />
+              <span>Multi-Account Cashbook</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('salary-slips')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              <FileText className="w-4 h-4 text-emerald-400" />
+              <span>Salary Slips</span>
             </button>
 
             <button

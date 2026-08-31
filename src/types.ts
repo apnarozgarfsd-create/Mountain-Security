@@ -407,3 +407,109 @@ export const DEFAULT_ROLE_PASSWORDS: Record<UserRole, string> = {
   'Site Supervisor': 'site123',
   'Viewer': 'view123',
 };
+
+// ==========================================================
+// MULTI-ACCOUNT EXPENSE & LEDGER MANAGEMENT SYSTEM (SGMS V2)
+// ==========================================================
+
+export type FinanceAccountType = 'cash' | 'bank' | 'other';
+
+export interface FinanceAccount {
+  id: string;
+  name: string; // e.g. "Cash - Ali Akbar", "Cash - Zeeshan Ali", "Bank - JazzCash"
+  type: FinanceAccountType;
+  accountNumber?: string;
+  bankName?: string;
+  accountHolder?: string;
+  openingBalance: number;
+  openingDate?: string;
+  status: 'active' | 'archived';
+  notes?: string;
+  color?: string;
+  createdAt: string;
+}
+
+export interface ExpenseSubcategory {
+  id: string;
+  name: string;
+  parentCategoryId: string;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string; // Head A/C e.g. "Bike Fuel", "Salary [Month]", "Adv. [Month]", "Entertain."
+  parentCategoryId?: string | null;
+  type: 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'BOTH';
+  subcategories: ExpenseSubcategory[];
+  color?: string;
+  icon?: string;
+}
+
+export type PartyRoleRelation =
+  | 'Director'
+  | 'Employee'
+  | 'Staff'
+  | 'Guard'
+  | 'Vendor'
+  | 'Contractor'
+  | 'Family'
+  | 'Client'
+  | 'Other';
+
+export interface Party {
+  id: string;
+  name: string; // e.g. "Farwa Rustam", "Mother", "Ali Akbar", "Zeeshan Ali"
+  roleRelation: PartyRoleRelation;
+  phone?: string;
+  cnic?: string;
+  openingAdvanceBalance?: number; // Starting balance owed or advance
+  notes?: string;
+  createdAt: string;
+}
+
+export type TransactionDirection = 'IN' | 'OUT';
+
+export type PaymentMode =
+  | 'Cash'
+  | 'Online / Bank Transfer'
+  | 'Cheque'
+  | 'JazzCash'
+  | 'EasyPaisa'
+  | 'Other';
+
+export interface CashTransaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  accountId: string;
+  accountName?: string;
+  categoryId: string; // Head A/C
+  categoryName?: string;
+  subcategoryId?: string; // Sub-Head A/C
+  subcategoryName?: string;
+  partyId?: string; // nullable (e.g. Farwa Rustam, Guard Bilal)
+  partyName?: string;
+  description: string;
+  direction: TransactionDirection; // IN (RCVD) or OUT (PAID)
+  amount: number;
+  paymentMode?: PaymentMode | string;
+  referenceNo?: string;
+  notes?: string;
+  createdBy: string; // Staff member who logged it: Ali Akbar, Zeeshan Ali, etc.
+  attachmentUrl?: string;
+  attachmentName?: string;
+  transferGroupId?: string; // Links paired transfer OUT/IN entries
+  voucherNo?: string;
+  createdAt: string;
+}
+
+export interface DailyReconciliationSummary {
+  date: string;
+  accountId: string;
+  accountName: string;
+  openingBalance: number;
+  totalIn: number; // RCVD
+  totalOut: number; // PAID
+  closingBalance: number; // IN HAND
+  transactionCount: number;
+}
+

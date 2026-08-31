@@ -31,6 +31,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onT
   ];
 
   const moreTabs = [
+    { id: 'multi-account-expense', label: 'Multi-Account Cashbook', icon: <Receipt className="w-4 h-4 text-emerald-400" /> },
     { id: 'sites', label: 'Sites & Deployments', icon: <MapPin className="w-4 h-4 text-emerald-400" /> },
     { id: 'attendance', label: 'Guard Duty & Attendance', icon: <Calendar className="w-4 h-4 text-emerald-400" /> },
     { id: 'vouchers', label: 'Vouchers & Accounts', icon: <Receipt className="w-4 h-4 text-blue-400" /> },
