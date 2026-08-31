@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   ShoppingCart,
+  Trash2,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -20,6 +21,7 @@ export const InventoryProductsView: React.FC = () => {
     guards,
     sites,
     addProduct,
+    deleteProduct,
     issueInventoryItem,
     receiveInventoryStock,
   } = useApp();
@@ -31,6 +33,7 @@ export const InventoryProductsView: React.FC = () => {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [issueModalProduct, setIssueModalProduct] = useState<ProductItem | null>(null);
   const [receiveModalProduct, setReceiveModalProduct] = useState<ProductItem | null>(null);
+  const [deleteModalProduct, setDeleteModalProduct] = useState<ProductItem | null>(null);
 
   // New Product Form
   const [sku, setSku] = useState(`MSS-INV-${String(products.length + 1).padStart(3, '0')}`);
@@ -301,6 +304,14 @@ export const InventoryProductsView: React.FC = () => {
                       >
                         <ArrowUpRight className="w-3 h-3" />
                         <span>Issue Item</span>
+                      </button>
+
+                      <button
+                        onClick={() => setDeleteModalProduct(p)}
+                        className="p-1.5 text-red-400 hover:text-red-300 rounded hover:bg-red-950/60 cursor-pointer"
+                        title="Delete Item from Inventory"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
@@ -620,6 +631,67 @@ export const InventoryProductsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Product Confirmation */}
+      {deleteModalProduct && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-slate-800">
+              <div className="p-2.5 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Inventory Item</h3>
+                <p className="text-xs text-slate-400">Stock & Asset De-listing</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Item Name:</span>
+                <span className="font-bold text-white">{deleteModalProduct.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">SKU / Code:</span>
+                <span className="font-mono text-blue-400 font-bold">{deleteModalProduct.sku}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Category:</span>
+                <span className="text-slate-300 font-semibold">{deleteModalProduct.category}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Current In-Stock:</span>
+                <span className="text-amber-400 font-bold">{deleteModalProduct.currentStock} {deleteModalProduct.unit}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Are you sure you want to delete <strong>{deleteModalProduct.name}</strong> ({deleteModalProduct.sku}) from the inventory catalog?
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalProduct(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteProduct(deleteModalProduct.id);
+                  setDeleteModalProduct(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Item</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

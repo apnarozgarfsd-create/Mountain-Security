@@ -1,4 +1,4 @@
-import { CheckCircle, Eye, FileText, Plus, Printer, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Eye, FileText, Plus, Printer, RefreshCw, Search, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SalarySlip } from '../../types';
@@ -12,6 +12,7 @@ export const SalarySlipsView: React.FC = () => {
     clients,
     generateSalarySlip,
     updateSalarySlipStatus,
+    deleteSalarySlip,
     triggerPrint,
     companySettings,
     getGuardMonthlySummary,
@@ -21,6 +22,7 @@ export const SalarySlipsView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMonth, setFilterMonth] = useState('All');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [deleteModalSlip, setDeleteModalSlip] = useState<SalarySlip | null>(null);
 
   // Form State for New Salary Slip
   const [selectedGuardId, setSelectedGuardId] = useState(guards[0]?.id || '');
@@ -283,21 +285,31 @@ export const SalarySlipsView: React.FC = () => {
                       {slip.status}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-right space-x-1.5">
-                    <button
-                      onClick={() =>
-                        triggerPrint({
-                          type: 'salary-slip',
-                          data: slip,
-                          title: `Official Slip: ${slip.slipNo}`,
-                        })
-                      }
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600/90 hover:bg-blue-600 text-white rounded font-bold text-xs cursor-pointer shadow-xs"
-                      title="Print Official Slip"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Print</span>
-                    </button>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() =>
+                          triggerPrint({
+                            type: 'salary-slip',
+                            data: slip,
+                            title: `Official Slip: ${slip.slipNo}`,
+                          })
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/90 hover:bg-blue-600 text-white rounded font-bold text-xs cursor-pointer shadow-xs"
+                        title="Print Official Slip"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print</span>
+                      </button>
+
+                      <button
+                        onClick={() => setDeleteModalSlip(slip)}
+                        className="p-1.5 text-red-400 hover:text-red-300 rounded hover:bg-red-950/60 cursor-pointer"
+                        title="Delete Salary Slip"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -569,6 +581,67 @@ export const SalarySlipsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Salary Slip Confirmation */}
+      {deleteModalSlip && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-slate-800">
+              <div className="p-2.5 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Salary Slip</h3>
+                <p className="text-xs text-slate-400">Payroll Record Removal</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Slip No:</span>
+                <span className="font-mono text-blue-400 font-bold">{deleteModalSlip.slipNo}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Guard:</span>
+                <span className="font-bold text-white">{deleteModalSlip.guardName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Period:</span>
+                <span className="text-slate-300 font-semibold">{deleteModalSlip.monthName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Net Salary:</span>
+                <span className="font-mono text-emerald-400 font-bold">{formatPKR(deleteModalSlip.netSalary)}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Are you sure you want to permanently remove salary slip <strong>{deleteModalSlip.slipNo}</strong> for <strong>{deleteModalSlip.guardName}</strong>?
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalSlip(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteSalarySlip(deleteModalSlip.id);
+                  setDeleteModalSlip(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Slip</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  AlertTriangle,
   Building,
   Clock,
   Edit2,
@@ -10,6 +11,7 @@ import {
   Printer,
   Search,
   Shield,
+  Trash2,
   User,
   Users,
 } from 'lucide-react';
@@ -19,12 +21,13 @@ import { Site } from '../../types';
 import { formatPKR } from '../../utils/formatters';
 
 export const SitesPage: React.FC = () => {
-  const { sites, clients, guards, weapons, addSite, updateSite, triggerPrint } = useApp();
+  const { sites, clients, guards, weapons, addSite, updateSite, deleteSite, triggerPrint } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const [deleteModalSite, setDeleteModalSite] = useState<Site | null>(null);
 
   const [formData, setFormData] = useState<Omit<Site, 'id' | 'createdAt'>>({
     siteCode: `S-${(sites.length + 1).toString().padStart(3, '0')}`,
@@ -239,31 +242,41 @@ export const SitesPage: React.FC = () => {
                   {formatPKR(site.monthlyRate)}/mo
                 </span>
 
-                <button
-                  onClick={() => {
-                    setSelectedSite(site);
-                    setFormData({
-                      siteCode: site.siteCode,
-                      clientId: site.clientId,
-                      clientName: site.clientName,
-                      siteName: site.siteName,
-                      location: site.location,
-                      address: site.address,
-                      contactPerson: site.contactPerson,
-                      contactPhone: site.contactPhone,
-                      requiredGuards: site.requiredGuards,
-                      shiftDetails: site.shiftDetails,
-                      siteSupervisor: site.siteSupervisor,
-                      status: site.status,
-                      monthlyRate: site.monthlyRate,
-                      notes: site.notes || '',
-                    });
-                    setIsModalOpen(true);
-                  }}
-                  className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Edit Site
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      setSelectedSite(site);
+                      setFormData({
+                        siteCode: site.siteCode,
+                        clientId: site.clientId,
+                        clientName: site.clientName,
+                        siteName: site.siteName,
+                        location: site.location,
+                        address: site.address,
+                        contactPerson: site.contactPerson,
+                        contactPhone: site.contactPhone,
+                        requiredGuards: site.requiredGuards,
+                        shiftDetails: site.shiftDetails,
+                        siteSupervisor: site.siteSupervisor,
+                        status: site.status,
+                        monthlyRate: site.monthlyRate,
+                        notes: site.notes || '',
+                      });
+                      setIsModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    <Edit2 className="w-3 h-3 text-amber-400" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    onClick={() => setDeleteModalSite(site)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete</span>
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -419,6 +432,73 @@ export const SitesPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Site Confirmation */}
+      {deleteModalSite && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-slate-800">
+              <div className="p-2.5 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Operational Site</h3>
+                <p className="text-xs text-slate-400">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Site Name:</span>
+                <span className="font-bold text-white">{deleteModalSite.siteName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Site Code:</span>
+                <span className="font-mono text-blue-400 font-bold">{deleteModalSite.siteCode}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Client:</span>
+                <span className="text-slate-300 font-semibold">{deleteModalSite.clientName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Location:</span>
+                <span className="text-slate-300">{deleteModalSite.location}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Stationed Personnel:</span>
+                <span className="text-amber-400 font-bold">
+                  {guards.filter((g) => g.currentSiteId === deleteModalSite.id).length} Guards (will return to HQ Pool)
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Are you sure you want to permanently remove <strong>{deleteModalSite.siteName}</strong>? All stationed guards and armaments will be automatically released back to the HQ reserve pool.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalSite(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteSite(deleteModalSite.id);
+                  setDeleteModalSite(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Site</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

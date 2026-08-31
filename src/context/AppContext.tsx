@@ -25,11 +25,13 @@ import {
   Client,
   ClientInvoice,
   CompanySettings,
+  DEFAULT_ROLE_PASSWORDS,
   Guard,
   GuardAssignmentHistory,
   GuardAttendanceRecord,
   GuardIssuedItem,
   Product,
+  RoleSecuritySettings,
   SalarySlip,
   SearchResultItem,
   Site,
@@ -82,6 +84,19 @@ interface AppContextType {
   activeTab: string;
   setActiveTab: (tab: string) => void;
 
+  // Role & Security Settings
+  securitySettings: RoleSecuritySettings;
+  updateSecuritySettings: (settings: Partial<RoleSecuritySettings>) => void;
+  updateRolePassword: (role: UserRole, newPass: string) => void;
+  verifyRolePassword: (role: UserRole, enteredPass: string) => boolean;
+  isSecurityModalOpen: boolean;
+  pendingRoleSwitch: UserRole | null;
+  requestRoleSwitch: (role: UserRole) => void;
+  cancelRoleSwitch: () => void;
+  confirmRoleSwitch: (password: string) => { success: boolean; error?: string };
+  lockSystem: () => void;
+  unlockSystem: (password: string) => { success: boolean; error?: string };
+
   // Actions - Attendance & Duty Register (Full Day, Double Duty, Half Day, Overtime)
   markAttendance: (record: Omit<GuardAttendanceRecord, 'id' | 'createdAt'>) => GuardAttendanceRecord;
   markBulkAttendance: (records: Omit<GuardAttendanceRecord, 'id' | 'createdAt'>[]) => void;
@@ -94,23 +109,28 @@ interface AppContextType {
   // Actions - Clients & Sites
   addClient: (client: Omit<Client, 'id' | 'createdAt'>) => Client;
   updateClient: (id: string, client: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
   addSite: (site: Omit<Site, 'id' | 'createdAt'>) => Site;
   updateSite: (id: string, site: Partial<Site>) => void;
+  deleteSite: (id: string) => void;
 
   // Actions - Guards & Assignments
   addGuard: (guard: Omit<Guard, 'id'>) => Guard;
   updateGuard: (id: string, guard: Partial<Guard>) => void;
+  deleteGuard: (id: string) => void;
   transferGuard: (guardId: string, targetSiteId: string, shift: string, remarks?: string) => void;
 
   // Actions - Weapons & Assignments
   addWeapon: (weapon: Omit<Weapon, 'id'>) => Weapon;
   updateWeapon: (id: string, weapon: Partial<Weapon>) => void;
+  deleteWeapon: (id: string) => void;
   issueWeapon: (weaponId: string, guardId: string, siteId: string, notes?: string) => void;
   returnWeapon: (weaponId: string, condition?: string, notes?: string) => void;
 
   // Actions - Products & Inventory
   addProduct: (product: Omit<Product, 'id' | 'currentStock'>) => Product;
   updateProduct: (id: string, product: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
   addStockTransaction: (transaction: Omit<StockTransaction, 'id' | 'balanceAfter' | 'performedBy'>) => void;
   issueItemToGuard: (guardId: string, productId: string, quantity: number, notes?: string) => void;
   returnItemFromGuard: (issueId: string, notes?: string) => void;
@@ -123,12 +143,15 @@ interface AppContextType {
   updateAccount: (id: string, account: Partial<Account>) => void;
   createVoucher: (voucher: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'>) => { success: boolean; error?: string; voucher?: Voucher };
   cancelVoucher: (id: string, reason: string) => void;
+  deleteVoucher: (id: string) => void;
 
   // Actions - Salary Slips & Invoicing
   generateSalarySlip: (slipData: Omit<SalarySlip, 'id' | 'createdAt' | 'amountInWords'>) => SalarySlip;
   updateSalarySlipStatus: (id: string, status: 'Paid' | 'Pending' | 'Draft') => void;
+  deleteSalarySlip: (id: string) => void;
   createClientInvoice: (invoice: Omit<ClientInvoice, 'id'>) => ClientInvoice;
   receiveInvoicePayment: (invoiceId: string, amount: number, accountId: string, notes?: string) => void;
+  deleteClientInvoice: (id: string) => void;
 
   // Global Search
   searchGlobal: (query: string) => SearchResultItem[];
@@ -147,8 +170,18 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'MOUNTAIN_SECURITY_SGMS_DATA_V1';
 
+const initialSecuritySettings: RoleSecuritySettings = {
+  requirePasswordOnSwitch: true,
+  passwords: { ...DEFAULT_ROLE_PASSWORDS },
+  isLocked: false,
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>('Super Admin');
+  const [securitySettings, setSecuritySettings] = useState<RoleSecuritySettings>(initialSecuritySettings);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
+  const [pendingRoleSwitch, setPendingRoleSwitch] = useState<UserRole | null>(null);
+
   const [companySettings, setCompanySettings] = useState<CompanySettings>(initialCompanySettings);
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [sites, setSites] = useState<Site[]>(initialSites);
@@ -191,6 +224,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.clientInvoices) setClientInvoices(parsed.clientInvoices);
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
         if (parsed.companySettings) setCompanySettings(parsed.companySettings);
+        if (parsed.securitySettings) {
+          setSecuritySettings({
+            ...initialSecuritySettings,
+            ...parsed.securitySettings,
+            passwords: {
+              ...initialSecuritySettings.passwords,
+              ...(parsed.securitySettings.passwords || {}),
+            },
+            isLocked: false, // Start unlocked
+          });
+        }
         if (parsed.attendanceRecords && Array.isArray(parsed.attendanceRecords) && parsed.attendanceRecords.length > 0) {
           setAttendanceRecords(parsed.attendanceRecords);
         }
@@ -219,6 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clientInvoices,
         auditLogs,
         companySettings,
+        securitySettings,
         attendanceRecords,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
@@ -241,6 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clientInvoices,
     auditLogs,
     companySettings,
+    securitySettings,
     attendanceRecords,
   ]);
 
@@ -256,6 +302,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       details,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  const updateSecuritySettings = (newSettings: Partial<RoleSecuritySettings>) => {
+    setSecuritySettings((prev) => ({
+      ...prev,
+      ...newSettings,
+      passwords: {
+        ...prev.passwords,
+        ...(newSettings.passwords || {}),
+      },
+    }));
+    logAudit('Updated Security Config', 'Security', 'AUTH-SETTINGS', 'Updated role protection and password policies');
+  };
+
+  const updateRolePassword = (role: UserRole, newPass: string) => {
+    setSecuritySettings((prev) => ({
+      ...prev,
+      passwords: {
+        ...prev.passwords,
+        [role]: newPass.trim(),
+      },
+    }));
+    logAudit('Password Changed', 'Security', role, `Updated access password for role: ${role}`);
+  };
+
+  const verifyRolePassword = (role: UserRole, enteredPass: string): boolean => {
+    const expected = securitySettings.passwords[role] || DEFAULT_ROLE_PASSWORDS[role];
+    return enteredPass.trim() === expected.trim();
+  };
+
+  const requestRoleSwitch = (targetRole: UserRole) => {
+    if (targetRole === currentUserRole) {
+      return;
+    }
+    if (!securitySettings.requirePasswordOnSwitch) {
+      setCurrentUserRole(targetRole);
+      logAudit('Switched Role', 'Security', targetRole, `Role switched to ${targetRole} without password prompt`);
+      return;
+    }
+    setPendingRoleSwitch(targetRole);
+    setIsSecurityModalOpen(true);
+  };
+
+  const cancelRoleSwitch = () => {
+    setPendingRoleSwitch(null);
+    setIsSecurityModalOpen(false);
+  };
+
+  const confirmRoleSwitch = (password: string): { success: boolean; error?: string } => {
+    if (!pendingRoleSwitch) {
+      return { success: false, error: 'No target role selected' };
+    }
+    const isCorrect = verifyRolePassword(pendingRoleSwitch, password);
+    if (!isCorrect) {
+      logAudit('Failed Role Switch Attempt', 'Security', pendingRoleSwitch, `Incorrect password attempt for role: ${pendingRoleSwitch}`);
+      return { success: false, error: 'Incorrect password for this role. Please try again.' };
+    }
+
+    const previousRole = currentUserRole;
+    setCurrentUserRole(pendingRoleSwitch);
+    logAudit('Role Authenticated', 'Security', pendingRoleSwitch, `Successfully switched from ${previousRole} to ${pendingRoleSwitch}`);
+    setIsSecurityModalOpen(false);
+    setPendingRoleSwitch(null);
+    return { success: true };
+  };
+
+  const lockSystem = () => {
+    setSecuritySettings((prev) => ({ ...prev, isLocked: true }));
+    logAudit('System Locked', 'Security', currentUserRole, 'User manually locked the system screen');
+  };
+
+  const unlockSystem = (password: string): { success: boolean; error?: string } => {
+    // Can be unlocked by active role's password or Super Admin password
+    const isCurrentRoleMatch = verifyRolePassword(currentUserRole, password);
+    const isSuperAdminMatch = verifyRolePassword('Super Admin', password);
+
+    if (isCurrentRoleMatch || isSuperAdminMatch) {
+      setSecuritySettings((prev) => ({ ...prev, isLocked: false }));
+      logAudit('System Unlocked', 'Security', currentUserRole, `System unlocked with credentials for ${currentUserRole}`);
+      return { success: true };
+    }
+    return { success: false, error: 'Invalid password. Enter current role or Super Admin master password.' };
   };
 
   const updateCompanySettings = (newSettings: Partial<CompanySettings>) => {
@@ -288,6 +416,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Client Updated', 'Clients', id, `Updated client details for ID: ${id}`);
   };
 
+  const deleteClient = (id: string) => {
+    const client = clients.find((c) => c.id === id);
+    setClients((prev) => prev.filter((c) => c.id !== id));
+    logAudit('Client Deleted', 'Clients', client?.clientCode || id, `Deleted client profile: ${client?.companyName || id}`);
+  };
+
   const addSite = (siteData: Omit<Site, 'id' | 'createdAt'>): Site => {
     const id = `SITE-${String(sites.length + 1).padStart(3, '0')}`;
     const client = clients.find((c) => c.id === siteData.clientId);
@@ -310,6 +444,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Site Updated', 'Sites', id, `Updated site parameters for ID: ${id}`);
   };
 
+  const deleteSite = (id: string) => {
+    const site = sites.find((s) => s.id === id);
+    // Unassign guards deployed at this site
+    setGuards((prev) =>
+      prev.map((g) =>
+        g.currentSiteId === id
+          ? { ...g, currentSiteId: undefined, currentSiteName: undefined }
+          : g
+      )
+    );
+    // Unassign weapons at this site
+    setWeapons((prev) =>
+      prev.map((w) =>
+        w.currentSiteId === id
+          ? { ...w, currentSiteId: undefined, currentSiteName: undefined }
+          : w
+      )
+    );
+    setSites((prev) => prev.filter((s) => s.id !== id));
+    logAudit('Site Deleted', 'Sites', site?.siteCode || id, `Deleted operational site: ${site?.siteName || id}`);
+  };
+
   // --- Guards & Assignments ---
   const addGuard = (guardData: Omit<Guard, 'id'>): Guard => {
     const id = `GRD-${100 + guards.length + 1}`;
@@ -328,6 +484,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((g) => (g.id === id ? { ...g, ...updated } : g))
     );
     logAudit('Guard Updated', 'Guards', id, `Updated guard record for ${id}`);
+  };
+
+  const deleteGuard = (id: string) => {
+    const guard = guards.find((g) => g.id === id);
+    // Return / unassign any weapon assigned to this guard
+    setWeapons((prev) =>
+      prev.map((w) =>
+        w.currentGuardId === id || w.assignedGuardId === id
+          ? {
+              ...w,
+              currentStatus: 'Available',
+              currentGuardId: undefined,
+              currentGuardName: undefined,
+              currentSiteId: undefined,
+              currentSiteName: undefined,
+              assignedGuardId: undefined,
+              assignedGuardName: undefined,
+              assignedSiteId: undefined,
+            }
+          : w
+      )
+    );
+    // Close assignments
+    setGuardAssignments((prev) =>
+      prev.map((a) =>
+        a.guardId === id && a.status === 'Active'
+          ? { ...a, status: 'Completed', endDate: new Date().toISOString().split('T')[0], remarks: 'Guard removed from system' }
+          : a
+      )
+    );
+    setGuards((prev) => prev.filter((g) => g.id !== id));
+    logAudit('Guard Deleted', 'Guards', guard?.guardCode || id, `Deleted guard profile: ${guard?.name || id}`);
   };
 
   const transferGuard = (guardId: string, targetSiteId: string, shift: string, remarks?: string) => {
@@ -631,6 +819,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Weapon Updated', 'Armoury', id, `Updated weapon asset parameters for ${id}`);
   };
 
+  const deleteWeapon = (id: string) => {
+    const weapon = weapons.find((w) => w.id === id);
+    if (weapon?.currentGuardId) {
+      setGuards((prev) =>
+        prev.map((g) => (g.id === weapon.currentGuardId ? { ...g, currentWeaponId: undefined } : g))
+      );
+    }
+    setWeapons((prev) => prev.filter((w) => w.id !== id));
+    logAudit('Weapon Deleted', 'Armoury', weapon?.weaponCode || id, `Deleted weapon: ${weapon?.weaponType || id} (${weapon?.weaponCode || ''})`);
+  };
+
   const issueWeapon = (weaponId: string, guardId: string, siteId: string, notes?: string) => {
     const weapon = weapons.find((w) => w.id === weaponId);
     const guard = guards.find((g) => g.id === guardId);
@@ -759,6 +958,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((p) => (p.id === id ? { ...p, ...updated } : p))
     );
     logAudit('Product Updated', 'Inventory Master', id, `Updated product settings for ${id}`);
+  };
+
+  const deleteProduct = (id: string) => {
+    const prod = products.find((p) => p.id === id);
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    logAudit('Product Deleted', 'Inventory Master', prod?.productCode || id, `Deleted inventory item: ${prod?.productName || prod?.name || id}`);
   };
 
   const addStockTransaction = (txData: Omit<StockTransaction, 'id' | 'balanceAfter' | 'performedBy'>) => {
@@ -1036,6 +1241,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const deleteVoucher = (id: string) => {
+    const voucher = vouchers.find((v) => v.id === id);
+    setVouchers((prev) => prev.filter((v) => v.id !== id));
+    logAudit('Voucher Deleted', 'Accounting', voucher?.voucherNo || id, `Deleted voucher #${voucher?.voucherNo || id}`);
+  };
+
   // --- Salary Slips & Invoices ---
   const generateSalarySlip = (slipData: Omit<SalarySlip, 'id' | 'createdAt' | 'amountInWords'>): SalarySlip => {
     const id = `SLIP-${Date.now()}`;
@@ -1066,6 +1277,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Salary Slip Status Updated', 'Payroll', id, `Updated slip status to ${status}`);
   };
 
+  const deleteSalarySlip = (id: string) => {
+    const slip = salarySlips.find((s) => s.id === id);
+    setSalarySlips((prev) => prev.filter((s) => s.id !== id));
+    logAudit('Salary Slip Deleted', 'Payroll', slip?.slipNo || id, `Deleted salary slip #${slip?.slipNo || id}`);
+  };
+
   const createClientInvoice = (invoiceData: Omit<ClientInvoice, 'id'>): ClientInvoice => {
     const id = `INV-${Date.now()}`;
     const newInvoice: ClientInvoice = {
@@ -1075,6 +1292,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClientInvoices((prev) => [newInvoice, ...prev]);
     logAudit('Invoice Generated', 'Billing', newInvoice.invoiceNo, `Generated invoice for ${newInvoice.clientName} (Amount: PKR ${newInvoice.totalAmount.toLocaleString()})`);
     return newInvoice;
+  };
+
+  const deleteClientInvoice = (id: string) => {
+    const inv = clientInvoices.find((i) => i.id === id);
+    setClientInvoices((prev) => prev.filter((i) => i.id !== id));
+    logAudit('Invoice Deleted', 'Billing', inv?.invoiceNo || id, `Deleted client invoice #${inv?.invoiceNo || id}`);
   };
 
   const receiveInvoicePayment = (invoiceId: string, amount: number, accountId: string, notes?: string) => {
@@ -1306,6 +1529,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       version: '1.0',
       exportedAt: new Date().toISOString(),
       companySettings,
+      securitySettings,
       clients,
       sites,
       guards,
@@ -1320,6 +1544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       salarySlips,
       clientInvoices,
       auditLogs,
+      attendanceRecords,
     };
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(stateToExport, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -1337,6 +1562,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const parsed = JSON.parse(jsonString);
       if (parsed.clients && parsed.guards && parsed.vouchers) {
         if (parsed.companySettings) setCompanySettings(parsed.companySettings);
+        if (parsed.securitySettings) {
+          setSecuritySettings({
+            ...initialSecuritySettings,
+            ...parsed.securitySettings,
+            passwords: {
+              ...initialSecuritySettings.passwords,
+              ...(parsed.securitySettings.passwords || {}),
+            },
+            isLocked: false,
+          });
+        }
         setClients(parsed.clients);
         setSites(parsed.sites || []);
         setGuards(parsed.guards || []);
@@ -1367,6 +1603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetToSampleData = () => {
     setCompanySettings(initialCompanySettings);
+    setSecuritySettings(initialSecuritySettings);
     setClients(initialClients);
     setSites(initialSites);
     setGuards(initialGuards);
@@ -1436,6 +1673,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       companySettings,
+      securitySettings,
       clients,
       sites,
       guards,
@@ -1468,6 +1706,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUserRole,
         setCurrentUserRole,
+        securitySettings,
+        updateSecuritySettings,
+        updateRolePassword,
+        verifyRolePassword,
+        isSecurityModalOpen,
+        pendingRoleSwitch,
+        requestRoleSwitch,
+        cancelRoleSwitch,
+        confirmRoleSwitch,
+        lockSystem,
+        unlockSystem,
         companySettings,
         updateCompanySettings,
         clients,
@@ -1505,17 +1754,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         quickGenerateSalarySlipFromAttendance,
         addClient,
         updateClient,
+        deleteClient,
         addSite,
         updateSite,
+        deleteSite,
         addGuard,
         updateGuard,
+        deleteGuard,
         transferGuard,
         addWeapon,
         updateWeapon,
+        deleteWeapon,
         issueWeapon,
         returnWeapon,
         addProduct,
         updateProduct,
+        deleteProduct,
         addStockTransaction,
         issueItemToGuard,
         returnItemFromGuard,
@@ -1525,10 +1779,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAccount,
         createVoucher,
         cancelVoucher,
+        deleteVoucher,
         generateSalarySlip,
         updateSalarySlipStatus,
+        deleteSalarySlip,
         createClientInvoice,
         receiveInvoicePayment,
+        deleteClientInvoice,
         searchGlobal,
         exportDatabaseJSON,
         exportDataJson,

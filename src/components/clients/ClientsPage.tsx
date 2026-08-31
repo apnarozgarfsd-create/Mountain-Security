@@ -1,7 +1,9 @@
 import {
+  AlertTriangle,
   Building2,
   CheckCircle2,
   DollarSign,
+  Edit2,
   FileSpreadsheet,
   FileText,
   Mail,
@@ -21,12 +23,13 @@ import { Client } from '../../types';
 import { formatPKR } from '../../utils/formatters';
 
 export const ClientsPage: React.FC = () => {
-  const { clients, sites, guards, addClient, updateClient, triggerPrint } = useApp();
+  const { clients, sites, guards, addClient, updateClient, deleteClient, triggerPrint } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [deleteModalClient, setDeleteModalClient] = useState<Client | null>(null);
 
   const [formData, setFormData] = useState<Omit<Client, 'id' | 'createdAt'>>({
     clientCode: `C-${(clients.length + 1).toString().padStart(3, '0')}`,
@@ -244,7 +247,7 @@ export const ClientsPage: React.FC = () => {
                   <span>Print Slip</span>
                 </button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
                       setSelectedClient(client);
@@ -268,9 +271,17 @@ export const ClientsPage: React.FC = () => {
                       });
                       setIsAddModalOpen(true);
                     }}
-                    className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
                   >
-                    Edit
+                    <Edit2 className="w-3 h-3 text-amber-400" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    onClick={() => setDeleteModalClient(client)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
@@ -454,6 +465,69 @@ export const ClientsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Client Confirmation */}
+      {deleteModalClient && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-slate-800">
+              <div className="p-2.5 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Client Profile</h3>
+                <p className="text-xs text-slate-400">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Company Name:</span>
+                <span className="font-bold text-white">{deleteModalClient.companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Client Code:</span>
+                <span className="font-mono text-blue-400 font-bold">{deleteModalClient.clientCode}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Contact Person:</span>
+                <span className="text-slate-300">{deleteModalClient.contactPerson} ({deleteModalClient.phone})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Active Sites:</span>
+                <span className="text-amber-400 font-bold">
+                  {sites.filter((s) => s.clientId === deleteModalClient.id).length} Sites
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Are you sure you want to delete corporate client <strong>{deleteModalClient.companyName}</strong> from the system?
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalClient(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteClient(deleteModalClient.id);
+                  setDeleteModalClient(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Client</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

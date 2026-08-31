@@ -13,6 +13,7 @@ import {
   Laptop,
   Layers,
   LayoutDashboard,
+  Lock,
   LogOut,
   MapPin,
   Menu,
@@ -35,6 +36,8 @@ import {
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
+import { RoleAuthModal } from '../auth/RoleAuthModal';
+import { SystemLockScreen } from '../auth/SystemLockScreen';
 import { MountainLogo } from '../common/MountainLogo';
 import { MobileBottomNav } from './MobileBottomNav';
 import { WindowsTitleBar } from './WindowsTitleBar';
@@ -57,7 +60,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     activeTab,
     setActiveTab,
     currentUserRole,
-    setCurrentUserRole,
+    requestRoleSwitch,
+    lockSystem,
+    securitySettings,
     setIsSearchOpen,
     companySettings,
     guards,
@@ -231,6 +236,16 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             <span>New Voucher</span>
           </button>
 
+          {/* Lock System Button */}
+          <button
+            onClick={lockSystem}
+            title="Lock Session / Workstation"
+            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-amber-400 transition-colors cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">Lock</span>
+          </button>
+
           {/* User Role Selector */}
           <div className="relative">
             <button
@@ -243,22 +258,32 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             </button>
 
             {isRoleDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-slate-400 border-b border-slate-800">
-                  Switch Active Role
+              <div className="absolute right-0 mt-2 w-52 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                  <span>Switch Active Role</span>
+                  {securitySettings.requirePasswordOnSwitch && (
+                    <span className="text-[9px] text-amber-400 font-normal flex items-center gap-0.5">
+                      <Lock className="w-2.5 h-2.5" /> PIN Protected
+                    </span>
+                  )}
                 </div>
                 {roles.map((role) => (
                   <button
                     key={role}
                     onClick={() => {
-                      setCurrentUserRole(role);
                       setIsRoleDropdownOpen(false);
+                      requestRoleSwitch(role);
                     }}
                     className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-900 cursor-pointer transition-colors ${
                       currentUserRole === role ? 'text-blue-400 font-bold bg-slate-900/50' : 'text-slate-300'
                     }`}
                   >
-                    <span>{role}</span>
+                    <span className="flex items-center gap-1.5">
+                      {securitySettings.requirePasswordOnSwitch && currentUserRole !== role && (
+                        <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      )}
+                      <span>{role}</span>
+                    </span>
                     {currentUserRole === role && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
                   </button>
                 ))}
@@ -342,6 +367,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Mobile / Android Bottom Navigation Bar */}
       <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Role Switch Password Authentication Modal */}
+      <RoleAuthModal />
+
+      {/* Full Workstation Lock Screen */}
+      <SystemLockScreen />
 
       {/* Backdrop for mobile sidebar */}
       {isSidebarOpen && (

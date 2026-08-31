@@ -392,3 +392,18 @@ export interface SearchResultItem {
   targetTab: string;
   targetId: string;
 }
+
+export interface RoleSecuritySettings {
+  requirePasswordOnSwitch: boolean;
+  passwords: Record<UserRole, string>;
+  isLocked: boolean;
+}
+
+export const DEFAULT_ROLE_PASSWORDS: Record<UserRole, string> = {
+  'Super Admin': 'admin123',
+  'Accountant': 'acc123',
+  'HR Manager': 'hr123',
+  'Armoury Officer': 'armour123',
+  'Site Supervisor': 'site123',
+  'Viewer': 'view123',
+};

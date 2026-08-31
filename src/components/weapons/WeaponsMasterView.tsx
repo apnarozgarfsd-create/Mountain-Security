@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   CheckCircle2,
@@ -7,6 +8,7 @@ import {
   Printer,
   Search,
   Shield,
+  Trash2,
   Wrench,
 } from 'lucide-react';
 import React, { useState } from 'react';
@@ -21,6 +23,7 @@ export const WeaponsMasterView: React.FC = () => {
     sites,
     addWeapon,
     updateWeapon,
+    deleteWeapon,
     issueWeapon,
     returnWeapon,
     triggerPrint,
@@ -33,6 +36,7 @@ export const WeaponsMasterView: React.FC = () => {
   const [isAddWeaponOpen, setIsAddWeaponOpen] = useState(false);
   const [issueModalWeapon, setIssueModalWeapon] = useState<Weapon | null>(null);
   const [returnModalWeapon, setReturnModalWeapon] = useState<Weapon | null>(null);
+  const [deleteModalWeapon, setDeleteModalWeapon] = useState<Weapon | null>(null);
 
   // New Weapon Form State
   const [weaponCode, setWeaponCode] = useState(`W-${String(weapons.length + 1).padStart(3, '0')}`);
@@ -281,6 +285,14 @@ export const WeaponsMasterView: React.FC = () => {
                       title="Print Weapon Card"
                     >
                       <Printer className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => setDeleteModalWeapon(weapon)}
+                      className="p-1.5 text-red-400 hover:text-red-300 rounded hover:bg-red-950/60 cursor-pointer"
+                      title="Delete Weapon from Inventory"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -570,6 +582,69 @@ export const WeaponsMasterView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Weapon Confirmation */}
+      {deleteModalWeapon && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-slate-800">
+              <div className="p-2.5 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Firearm Record</h3>
+                <p className="text-xs text-slate-400">Armoury & Ordinance Record Removal</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Weapon Code:</span>
+                <span className="font-mono text-red-400 font-bold">{deleteModalWeapon.weaponCode}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Type / Model:</span>
+                <span className="font-bold text-white">{deleteModalWeapon.weaponType} ({deleteModalWeapon.makeModel || 'N/A'})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Serial No:</span>
+                <span className="font-mono text-slate-300">{deleteModalWeapon.serialNumber || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Current Status:</span>
+                <span className={`font-bold ${deleteModalWeapon.currentStatus === 'Issued' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {deleteModalWeapon.currentStatus} {deleteModalWeapon.currentGuardName ? `(to ${deleteModalWeapon.currentGuardName})` : ''}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Are you sure you want to permanently delete weapon <strong>{deleteModalWeapon.weaponCode}</strong>? If currently issued to a guard, it will be automatically unassigned.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalWeapon(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteWeapon(deleteModalWeapon.id);
+                  setDeleteModalWeapon(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Weapon</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
