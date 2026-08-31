@@ -11,9 +11,9 @@
     <meta name="twitter:card" content="summary_large_image" />
 
     <!-- PWA & Mobile Web App Capabilities -->
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
-    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="./icon-192.svg" />
+    <link rel="apple-touch-icon" href="./icon-192.svg" />
     <meta name="theme-color" content="#090d16" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -23,7 +23,7 @@
     
     <!-- Windows Desktop App Tiles & Configuration -->
     <meta name="msapplication-TileColor" content="#090d16" />
-    <meta name="msapplication-TileImage" content="/windows-tile.svg" />
+    <meta name="msapplication-TileImage" content="./windows-tile.svg" />
     <meta name="msapplication-navbutton-color" content="#0284c7" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,13 +32,13 @@
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white overscroll-none">
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
+      if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register('./sw.js')
             .then((reg) => console.log('PWA Service Worker registered:', reg.scope))
-            .catch((err) => console.log('PWA Service Worker registration failed:', err));
+            .catch((err) => console.log('PWA Service Worker registration note:', err));
         });
       }
     </script>
