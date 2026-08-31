@@ -37,6 +37,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
 import { RoleAuthModal } from '../auth/RoleAuthModal';
+import { ROLE_EXPLANATIONS, RoleGuideModal } from '../auth/RoleMeaningGuide';
 import { SystemLockScreen } from '../auth/SystemLockScreen';
 import { MountainLogo } from '../common/MountainLogo';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -77,6 +78,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const [isRoleGuideModalOpen, setIsRoleGuideModalOpen] = useState(false);
 
   const lowStockCount = products.filter((p) => p.currentStock <= p.minimumStock).length;
   const activeGuardsCount = guards.filter((g) => g.status === 'Active').length;
@@ -259,7 +261,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             </button>
 
             {isRoleDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-52 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 mt-2 w-72 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
                 <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
                   <span>Switch Active Role</span>
                   {securitySettings.requirePasswordOnSwitch && (
@@ -268,26 +270,49 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
                     </span>
                   )}
                 </div>
-                {roles.map((role) => (
+                <div className="max-h-80 overflow-y-auto py-1">
+                  {ROLE_EXPLANATIONS.map((item) => {
+                    const isCurrent = currentUserRole === item.role;
+                    return (
+                      <button
+                        key={item.role}
+                        onClick={() => {
+                          setIsRoleDropdownOpen(false);
+                          requestRoleSwitch(item.role);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs flex flex-col gap-0.5 hover:bg-slate-900 cursor-pointer transition-colors border-b border-slate-900/60 last:border-0 ${
+                          isCurrent ? 'text-blue-400 font-bold bg-blue-950/30' : 'text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <span className="text-sm">{item.emoji}</span>
+                            <span>{item.role}</span>
+                            {securitySettings.requirePasswordOnSwitch && !isCurrent && (
+                              <Lock className="w-2.5 h-2.5 text-slate-500 ml-1" />
+                            )}
+                          </span>
+                          {isCurrent && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-normal line-clamp-1 pl-5">
+                          {item.kyaKarSaktaHai}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Footer Link to Full Roles Guide */}
+                <div className="p-1.5 border-t border-slate-800 bg-slate-900/60">
                   <button
-                    key={role}
                     onClick={() => {
                       setIsRoleDropdownOpen(false);
-                      requestRoleSwitch(role);
+                      setIsRoleGuideModalOpen(true);
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-900 cursor-pointer transition-colors ${
-                      currentUserRole === role ? 'text-blue-400 font-bold bg-slate-900/50' : 'text-slate-300'
-                    }`}
+                    className="w-full py-1.5 px-2 bg-blue-950/80 hover:bg-blue-900 border border-blue-800/60 text-blue-300 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                   >
-                    <span className="flex items-center gap-1.5">
-                      {securitySettings.requirePasswordOnSwitch && currentUserRole !== role && (
-                        <Lock className="w-2.5 h-2.5 text-slate-500" />
-                      )}
-                      <span>{role}</span>
-                    </span>
-                    {currentUserRole === role && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
+                    <span>🔐 Roles Guide & Meaning (کردار کی تفصیل)</span>
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -371,6 +396,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Role Switch Password Authentication Modal */}
       <RoleAuthModal />
+
+      {/* Full Roles Meaning Guide Modal */}
+      <RoleGuideModal
+        isOpen={isRoleGuideModalOpen}
+        onClose={() => setIsRoleGuideModalOpen(false)}
+      />
 
       {/* Full Workstation Lock Screen */}
       <SystemLockScreen />

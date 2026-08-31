@@ -1,8 +1,12 @@
 import {
   AlertCircle,
+  BookOpen,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Eye,
   EyeOff,
+  Info,
   KeyRound,
   Lock,
   Shield,
@@ -13,6 +17,7 @@ import {
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DEFAULT_ROLE_PASSWORDS, UserRole } from '../../types';
+import { ROLE_EXPLANATIONS, RoleMeaningCard } from './RoleMeaningGuide';
 
 export const RoleAuthModal: React.FC = () => {
   const {
@@ -28,6 +33,7 @@ export const RoleAuthModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showRoleGuide, setShowRoleGuide] = useState(false);
 
   if (!isSecurityModalOpen || !pendingRoleSwitch) {
     return null;
@@ -53,10 +59,11 @@ export const RoleAuthModal: React.FC = () => {
   };
 
   const defaultHint = DEFAULT_ROLE_PASSWORDS[pendingRoleSwitch];
+  const targetExplanation = ROLE_EXPLANATIONS.find((r) => r.role === pendingRoleSwitch);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -79,7 +86,7 @@ export const RoleAuthModal: React.FC = () => {
         </div>
 
         {/* Role Switch Info Box */}
-        <div className="bg-slate-950/80 rounded-xl p-3.5 border border-slate-800 text-xs space-y-2">
+        <div className="bg-slate-950/80 rounded-xl p-3.5 border border-slate-800 text-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-slate-400">Current Active Role:</span>
             <span className="font-semibold text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded">
@@ -89,11 +96,42 @@ export const RoleAuthModal: React.FC = () => {
           <div className="flex items-center justify-between">
             <span className="text-slate-400">Switching To:</span>
             <span className="font-bold text-blue-400 bg-blue-950/80 border border-blue-800/60 px-2.5 py-0.5 rounded-md flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              {pendingRoleSwitch}
+              <span className="text-sm">{targetExplanation?.emoji || '🛡️'}</span>
+              <span>{pendingRoleSwitch}</span>
             </span>
           </div>
+
+          {/* Roman Urdu What this role does */}
+          {targetExplanation && (
+            <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+              <span className="text-amber-400 font-bold block mb-0.5">
+                {targetExplanation.emoji} {targetExplanation.role} — Yeh kya kar sakta hai?
+              </span>
+              <p className="text-slate-200 leading-relaxed font-medium">
+                {targetExplanation.kyaKarSaktaHai}
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Toggle Full Roles Guide Button */}
+        <button
+          type="button"
+          onClick={() => setShowRoleGuide(!showRoleGuide)}
+          className="w-full py-2 px-3 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-bold text-blue-400 flex items-center justify-between cursor-pointer transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>🔐 Tamam Roles ka Simple Meaning & Table Dekhein</span>
+          </span>
+          {showRoleGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {showRoleGuide && (
+          <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-800">
+            <RoleMeaningCard highlightRole={pendingRoleSwitch} compact={true} />
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMsg && (
@@ -102,7 +140,10 @@ export const RoleAuthModal: React.FC = () => {
             <div className="space-y-1">
               <p className="font-semibold">{errorMsg}</p>
               <p className="text-[11px] text-red-400/90">
-                Default password for {pendingRoleSwitch} is: <code className="bg-red-900/60 px-1.5 py-0.5 rounded font-mono font-bold text-white">{defaultHint}</code>
+                Default password for {pendingRoleSwitch} is:{' '}
+                <code className="bg-red-900/60 px-1.5 py-0.5 rounded font-mono font-bold text-white">
+                  {defaultHint}
+                </code>
               </p>
             </div>
           </div>

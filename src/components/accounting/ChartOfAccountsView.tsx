@@ -1,15 +1,21 @@
 import {
+  AlertCircle,
+  AlertTriangle,
   Building,
   CheckCircle2,
   ChevronRight,
   DollarSign,
+  Edit2,
   FileSpreadsheet,
   FileText,
   FolderTree,
+  Pencil,
   Plus,
   Printer,
   Search,
+  Trash2,
   Wallet,
+  X,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -17,19 +23,23 @@ import { Account, AccountCategory } from '../../types';
 import { formatPKR } from '../../utils/formatters';
 
 export const ChartOfAccountsView: React.FC = () => {
-  const { accounts, vouchers, addAccount, updateAccount, triggerPrint } = useApp();
+  const { accounts, vouchers, addAccount, updateAccount, deleteAccount, triggerPrint } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
   const [selectedAccountForLedger, setSelectedAccountForLedger] = useState<Account | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
 
-  // Form State
+  // Form State for Add / Edit
   const [accountCode, setAccountCode] = useState('');
   const [accountName, setAccountName] = useState('');
   const [category, setCategory] = useState<AccountCategory>('Expense');
   const [subcategory, setSubcategory] = useState('');
   const [openingBalance, setOpeningBalance] = useState<number>(0);
+  const [status, setStatus] = useState<'Active' | 'Inactive'>('Active');
   const [description, setDescription] = useState('');
 
   const categories: AccountCategory[] = ['Asset', 'Liability', 'Equity', 'Income', 'Expense'];

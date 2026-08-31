@@ -195,6 +195,7 @@ interface AppContextType {
   // Actions - Accounting & Vouchers
   addAccount: (account: Omit<Account, 'id' | 'currentBalance'>) => Account;
   updateAccount: (id: string, account: Partial<Account>) => void;
+  deleteAccount: (id: string) => { success: boolean; error?: string };
   createVoucher: (voucher: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'>) => { success: boolean; error?: string; voucher?: Voucher };
   cancelVoucher: (id: string, reason: string) => void;
   deleteVoucher: (id: string) => void;
@@ -1195,6 +1196,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((a) => (a.id === id ? { ...a, ...updated } : a))
     );
     logAudit('Account Updated', 'Chart of Accounts', id, `Modified account properties for ${id}`);
+  };
+
+  const deleteAccount = (id: string): { success: boolean; error?: string } => {
+    const target = accounts.find((a) => a.id === id);
+    if (!target) return { success: false, error: 'Account not found.' };
+
+    const linkedVouchers = vouchers.filter((v) =>
+      v.entries.some((e) => e.accountId === id || e.accountCode === target.accountCode)
+    );
+
+    if (linkedVouchers.length > 0) {
+      setAccounts((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: 'Inactive' } : a))
+      );
+      logAudit(
+        'Account Deactivated',
+        'Chart of Accounts',
+        target.accountCode,
+        `Account ${target.accountCode} (${target.accountName}) has ${linkedVouchers.length} linked vouchers. Changed status to Inactive instead of hard deleting.`
+      );
+      return {
+        success: true,
+        error: `Account has ${linkedVouchers.length} linked voucher transactions. To maintain double-entry audit history, its status has been changed to Inactive instead of permanent deletion.`,
+      };
+    }
+
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    logAudit(
+      'Account Deleted',
+      'Chart of Accounts',
+      target.accountCode,
+      `Permanently deleted account ${target.accountCode} - ${target.accountName}`
+    );
+    return { success: true };
   };
 
   const createVoucher = (
@@ -2327,6 +2362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         receiveInventoryStock,
         addAccount,
         updateAccount,
+        deleteAccount,
         createVoucher,
         cancelVoucher,
         deleteVoucher,
