@@ -182,12 +182,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
                 <span className="font-display font-black text-sm sm:text-base tracking-wider text-white uppercase group-hover:text-blue-400 transition-colors">
                   MOUNTAIN SECURITY SERVICES
                 </span>
-                <span className="hidden sm:inline-block bg-red-600/90 text-white font-mono text-[10px] font-black px-1.5 py-0.5 rounded">
-                  SGMS
+                <span className="hidden sm:inline-block bg-red-600 text-white font-mono text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                  MSS
                 </span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium tracking-tight -mt-0.5">
-                Security Management & Double-Entry Accounting System
+                MSS Security Management System
               </p>
             </div>
           </div>

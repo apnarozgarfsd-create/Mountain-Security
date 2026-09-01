@@ -1,7 +1,7 @@
 {
-  "name": "Mountain Security Services SGMS",
-  "short_name": "Mountain SGMS",
-  "description": "Complete Security Agency Management System & Double-Entry Accounting System for Mountain Security Services Pvt. (Ltd.)",
+  "name": "MSS Security Management System - MOUNTAIN SECURITY SERVICES",
+  "short_name": "MSS SGMS",
+  "description": "Complete Security Management & Double-Entry Accounting System for MOUNTAIN SECURITY SERVICES (MSS)",
   "start_url": "./",
   "id": "./",
   "scope": "./",
@@ -13,21 +13,21 @@
   "categories": ["business", "productivity", "finance", "security"],
   "icons": [
     {
-      "src": "./icon-192.svg",
+      "src": "./mss-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./favicon.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.svg",
+      "src": "./mss-logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "./icon-maskable.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
@@ -35,46 +35,46 @@
     {
       "name": "Salary Slips",
       "short_name": "Salary Slips",
-      "description": "Generate and print official Mountain Security salary slips",
+      "description": "Generate and print official MSS salary slips",
       "url": "./#salary-slips",
-      "icons": [{ "src": "./icon-192.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "./mss-logo.png", "sizes": "192x192" }]
     },
     {
       "name": "Double-Entry Vouchers",
       "short_name": "Vouchers",
       "description": "Create Cash/Bank receipts and payment vouchers",
       "url": "./#vouchers",
-      "icons": [{ "src": "./icon-192.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "./mss-logo.png", "sizes": "192x192" }]
     },
     {
       "name": "Armoury & Weapons",
       "short_name": "Armoury",
       "description": "Manage firearms and security guard assignments",
       "url": "./#weapons",
-      "icons": [{ "src": "./icon-192.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "./mss-logo.png", "sizes": "192x192" }]
     },
     {
       "name": "Guards Directory",
       "short_name": "Guards",
       "description": "View and deploy active security personnel",
       "url": "./#guards",
-      "icons": [{ "src": "./icon-192.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "./mss-logo.png", "sizes": "192x192" }]
     }
   ],
   "screenshots": [
     {
-      "src": "./icon-512.svg",
+      "src": "./mss-logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "form_factor": "wide",
-      "label": "Mountain Security Services SGMS Desktop Command Center"
+      "label": "MSS Security Management System Desktop Command Center"
     },
     {
-      "src": "./icon-512.svg",
+      "src": "./mss-logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "form_factor": "narrow",
-      "label": "Mountain SGMS Android Mobile Guard & Duty Management"
+      "label": "MSS Android Mobile Guard & Duty Management"
     }
   ]
 }

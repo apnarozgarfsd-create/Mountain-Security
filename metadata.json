@@ -1,6 +1,7 @@
 {
-  "name": "Mountain Security Services SGMS",
-  "description": "Complete Security Agency Management System (SGMS) & Double-Entry Accounting for Mountain Security Services Pvt. (Ltd.)",
+  "name": "MSS Security Management System",
+  "description": "Complete Security Management & Double-Entry Accounting System for MOUNTAIN SECURITY SERVICES (MSS)",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
+

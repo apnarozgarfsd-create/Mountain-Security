@@ -34,12 +34,12 @@ export const WindowsTitleBar: React.FC<WindowsTitleBarProps> = ({ onOpenAppsHub 
       {/* Left: App Title and Icon */}
       <div className="flex items-center gap-2">
         <MountainLogo size="xs" showText={false} />
-        <span className="font-bold text-slate-300 font-mono tracking-tight">
-          Mountain SGMS v2.5
+        <span className="font-bold text-slate-200 font-mono tracking-tight">
+          MSS Security Management System
         </span>
-        <span className="hidden sm:inline-block text-slate-400">•</span>
+        <span className="hidden sm:inline-block text-slate-500">•</span>
         <span className="hidden sm:inline-block text-slate-400">
-          Windows & Android Desktop Edition
+          MOUNTAIN SECURITY SERVICES
         </span>
       </div>
 

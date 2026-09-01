@@ -96,7 +96,7 @@ export const NativeAppsHub: React.FC = () => {
       alert(
         userOS === 'Android'
           ? 'To install on Android: Tap Chrome/Browser menu (3 dots at top right) and select "Install app" or "Add to Home screen".'
-          : 'To install on Windows: Click the Install icon in the browser address bar (top right) or menu > "Install Mountain Security Services SGMS".'
+          : 'To install on Windows: Click the Install icon in the browser address bar (top right) or menu > "Install MSS Security Management System".'
       );
       return;
     }
@@ -180,7 +180,7 @@ npx electron-builder --win --x64`;
               <span>Android & Windows Desktop App Center</span>
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl">
-              Run Mountain Security Services SGMS as a standalone native application on Android smartphones, tablets, and Windows desktop PCs with offline storage, instant launching, and direct hardware printing.
+              Run MSS Security Management System as a standalone native application on Android smartphones, tablets, and Windows desktop PCs with offline storage, instant launching, and direct hardware printing.
             </p>
           </div>
 
@@ -331,7 +331,7 @@ npx electron-builder --win --x64`;
               <div className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full bg-emerald-900/80 text-emerald-300 flex items-center justify-center font-bold text-[11px] shrink-0">3</span>
                 <div>
-                  <strong className="text-white">Full Native Experience:</strong> Launches with full-screen dark theme, Mountain Security logo splash screen, and offline persistence.
+                  <strong className="text-white">Full Native Experience:</strong> Launches with full-screen dark theme, official MSS logo splash screen, and offline persistence.
                 </div>
               </div>
             </div>
@@ -341,7 +341,7 @@ npx electron-builder --win --x64`;
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all"
             >
               <Download className="w-4 h-4" />
-              <span>Install Mountain SGMS on Android</span>
+              <span>Install MSS SGMS on Android</span>
             </button>
           </div>
 
@@ -420,7 +420,7 @@ npx electron-builder --win --x64`;
               <div className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full bg-blue-900/80 text-blue-300 flex items-center justify-center font-bold text-[11px] shrink-0">2</span>
                 <div>
-                  <strong className="text-white">Click "App Available" Icon:</strong> Click the install icon (or Settings &gt; Apps &gt; <strong>"Install Mountain Security Services SGMS"</strong>).
+                  <strong className="text-white">Click "App Available" Icon:</strong> Click the install icon (or Settings &gt; Apps &gt; <strong>"Install MSS Security Management System"</strong>).
                 </div>
               </div>
               <div className="flex items-start gap-3">

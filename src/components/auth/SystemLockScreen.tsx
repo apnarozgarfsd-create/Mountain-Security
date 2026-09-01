@@ -61,7 +61,7 @@ export const SystemLockScreen: React.FC = () => {
               {companySettings.name || 'MOUNTAIN SECURITY SERVICES'}
             </h2>
             <p className="text-xs text-slate-400 font-medium">
-              SGMS Security Management & Ordinance Suite
+              MSS Security Management System
             </p>
           </div>
         </div>
@@ -120,15 +120,15 @@ export const SystemLockScreen: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm cursor-pointer transition-all active:scale-98"
+            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm cursor-pointer transition-all active:scale-98"
           >
             <Unlock className="w-4 h-4" />
-            <span>Unlock Mountain SGMS</span>
+            <span>Unlock MSS Security Management System</span>
           </button>
         </form>
 
         <div className="pt-2 text-[11px] text-slate-400">
-          Mountain Security Operations • Password protected workstation
+          MOUNTAIN SECURITY SERVICES (MSS) • Secure Workstation
         </div>
       </div>
     </div>
