@@ -200,14 +200,38 @@ export interface WeaponAssignmentHistory {
 
 export type ProductCategory = 'Uniform' | 'Uniforms' | 'Equipment' | 'Ammunition' | 'Protective Gear' | 'Footwear' | 'Headwear' | 'Tactical Gear' | 'Communication' | 'Stationery' | 'Other';
 
+export interface InventorySubCategory {
+  id: string;
+  name: string;
+  code?: string;
+  categoryId: string;
+  categoryName?: string;
+  description?: string;
+  status: 'Active' | 'Inactive';
+  createdAt?: string;
+}
+
+export interface InventoryCategory {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  icon?: string;
+  status: 'Active' | 'Inactive';
+  subCategories: InventorySubCategory[];
+  createdAt?: string;
+}
+
 export interface Product {
   id: string;
   productCode: string; // e.g. PRD-001
   sku?: string; // alias
   productName: string;
   name?: string; // alias
-  category: ProductCategory;
+  category: ProductCategory | string;
+  categoryId?: string;
   subcategory?: string;
+  subCategoryId?: string;
   unit: string;
   currentStock: number;
   minimumStock: number;
@@ -219,6 +243,7 @@ export interface Product {
   location?: string;
   description?: string;
   status: 'Active' | 'Inactive';
+  isDemo?: boolean;
 }
 
 export type ProductItem = Product;
@@ -512,4 +537,76 @@ export interface DailyReconciliationSummary {
   closingBalance: number; // IN HAND
   transactionCount: number;
 }
+
+// ==========================================================
+// CENTRAL DATABASE, SYNC & MERGE BACKUP TYPES
+// ==========================================================
+
+export type SyncState = 'online' | 'syncing' | 'offline';
+
+export interface SyncStatusInfo {
+  state: SyncState;
+  lastSyncedAt: string | null;
+  pendingCount: number;
+  message: string;
+}
+
+export interface DataSummaryCounts {
+  usersCount: number;
+  guardsCount: number;
+  sitesCount: number;
+  attendanceCount: number;
+  invoicesCount: number;
+  paymentsCount: number;
+  expensesCount: number;
+  journalEntriesCount: number;
+  inventoryItemsCount: number;
+  inventoryTransactionsCount: number;
+  hrRecordsCount: number;
+  armouryRecordsCount: number;
+  categoriesCount: number;
+  subCategoriesCount: number;
+  totalRecordsCount: number;
+}
+
+export interface MergeConflictItem {
+  id: string;
+  entity: string;
+  name: string;
+  existingValue: string;
+  incomingValue: string;
+  reason: string;
+  entityType?: 'Voucher' | 'CashTransaction' | 'ClientInvoice' | 'Account' | 'Product' | 'Guard' | 'Site' | 'Other';
+  recordName?: string;
+  referenceCode?: string;
+  existingData?: any;
+  backupData?: any;
+  differences?: string[];
+  resolvedChoice?: 'keep_existing' | 'use_incoming' | 'use_backup';
+}
+
+export interface MergePreviewSummary {
+  currentTotalRecords: number;
+  backupTotalRecords: number;
+  newRecordsCount: number;
+  duplicateRecordsCount: number;
+  conflictsCount: number;
+  entityBreakdown: {
+    entityName: string;
+    currentCount: number;
+    incomingCount: number;
+    newCount: number;
+  }[];
+  conflicts: MergeConflictItem[];
+}
+
+export interface GoogleAuthUser {
+  email: string;
+  displayName: string;
+  photoUrl?: string;
+  isAuthenticated: boolean;
+  role: UserRole;
+  isOwner: boolean;
+}
+
 

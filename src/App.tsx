@@ -10,11 +10,14 @@ import { MainDashboard } from './components/dashboard/MainDashboard';
 import { MultiAccountExpenseView } from './components/finance/MultiAccountExpenseView';
 import { GuardHistoryView } from './components/guards/GuardHistoryView';
 import { GuardsDirectoryView } from './components/guards/GuardsDirectoryView';
+import { CategoryManagementView } from './components/inventory/CategoryManagementView';
 import { InventoryProductsView } from './components/inventory/InventoryProductsView';
 import { InventoryTransactionsView } from './components/inventory/InventoryTransactionsView';
 import { AppLayout } from './components/layout/AppLayout';
 import { NativeAppsHub } from './components/native/NativeAppsHub';
 import { ReportsView } from './components/reports/ReportsView';
+import { BackupRestoreView } from './components/settings/BackupRestoreView';
+import { DataManagementView } from './components/settings/DataManagementView';
 import { SettingsView } from './components/settings/SettingsView';
 import { SitesPage } from './components/sites/SitesPage';
 import { WeaponAssignmentsView } from './components/weapons/WeaponAssignmentsView';
@@ -51,7 +54,11 @@ const AppContent: React.FC = () => {
         return <WeaponAssignmentsView />;
       case 'inventory':
       case 'uniform-issues':
-        return <InventoryProductsView />;
+        return <InventoryProductsView onNavigateToCategories={() => handleNavigate('categories')} />;
+      case 'categories':
+      case 'inventory-categories':
+      case 'subcategories':
+        return <CategoryManagementView onNavigateToProducts={() => handleNavigate('inventory')} />;
       case 'inventory-history':
         return <InventoryTransactionsView />;
       case 'multi-account-expense':
@@ -69,6 +76,15 @@ const AppContent: React.FC = () => {
         return <ReportsView />;
       case 'native-apps':
         return <NativeAppsHub />;
+      case 'backup-restore':
+      case 'backup':
+      case 'restore':
+      case 'merge':
+        return <BackupRestoreView />;
+      case 'data-management':
+      case 'reset-data':
+      case 'clean-data':
+        return <DataManagementView />;
       case 'audit-logs':
       case 'settings':
         return <SettingsView />;

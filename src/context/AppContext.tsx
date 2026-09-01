@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { initialInventoryCategories } from '../data/categorySeedData';
 import {
   initialAccounts,
   initialAttendanceRecords,
@@ -33,6 +34,7 @@ import {
   ClientInvoice,
   CompanySettings,
   DailyReconciliationSummary,
+  DataSummaryCounts,
   DEFAULT_ROLE_PASSWORDS,
   ExpenseCategory,
   ExpenseSubcategory,
@@ -41,6 +43,10 @@ import {
   GuardAssignmentHistory,
   GuardAttendanceRecord,
   GuardIssuedItem,
+  InventoryCategory,
+  InventorySubCategory,
+  MergeConflictItem,
+  MergePreviewSummary,
   Party,
   Product,
   RoleSecuritySettings,
@@ -77,6 +83,7 @@ interface AppContextType {
   weapons: Weapon[];
   weaponAssignments: WeaponAssignmentHistory[];
   products: Product[];
+  inventoryCategories: InventoryCategory[];
   stockTransactions: StockTransaction[];
   guardIssuedItems: GuardIssuedItem[];
   accounts: Account[];
@@ -182,7 +189,7 @@ interface AppContextType {
   returnWeapon: (weaponId: string, condition?: string, notes?: string) => void;
 
   // Actions - Products & Inventory
-  addProduct: (product: Omit<Product, 'id' | 'currentStock'>) => Product;
+  addProduct: (product: Omit<Product, 'id' | 'currentStock'> & { currentStock?: number }) => Product;
   updateProduct: (id: string, product: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   addStockTransaction: (transaction: Omit<StockTransaction, 'id' | 'balanceAfter' | 'performedBy'>) => void;
@@ -190,7 +197,15 @@ interface AppContextType {
   returnItemFromGuard: (issueId: string, notes?: string) => void;
   inventoryTransactions: StockTransaction[];
   issueInventoryItem: (params: { productId: string; quantity: number; guardId?: string; guardName?: string; siteId?: string; siteName?: string; notes?: string }) => void;
-  receiveInventoryStock: (params: { productId: string; quantity: number; unitCost?: number; supplierName?: string; notes?: string }) => void;
+  receiveInventoryStock: (params: { productId: string; quantity: number; unitCost?: number; unitPrice?: number; supplierName?: string; notes?: string }) => void;
+
+  // Actions - Inventory Categories & Taxonomy
+  addInventoryCategory: (category: Omit<InventoryCategory, 'id' | 'createdAt'>) => InventoryCategory;
+  updateInventoryCategory: (id: string, updates: Partial<InventoryCategory>) => void;
+  deleteInventoryCategory: (id: string) => { success: boolean; error?: string };
+  addInventorySubCategory: (categoryId: string, subCategory: Omit<InventorySubCategory, 'id' | 'categoryId' | 'createdAt'>) => InventorySubCategory;
+  updateInventorySubCategory: (categoryId: string, subId: string, updates: Partial<InventorySubCategory>) => void;
+  deleteInventorySubCategory: (categoryId: string, subId: string) => { success: boolean; error?: string };
 
   // Actions - Accounting & Vouchers
   addAccount: (account: Omit<Account, 'id' | 'currentBalance'>) => Account;
@@ -211,13 +226,18 @@ interface AppContextType {
   // Global Search
   searchGlobal: (query: string) => SearchResultItem[];
 
-  // Backup & Reset
+  // Backup, Restore & Data Management
   exportDatabaseJSON: () => void;
   exportDataJson: () => string;
   importDatabaseJSON: (jsonString: string) => boolean;
   importDataJson: (jsonString: string) => boolean;
   resetToSampleData: () => void;
   resetToInitialData: () => void;
+  getDataSummaryCounts: () => DataSummaryCounts;
+  resetToCleanInitialDataset: () => void;
+  deleteAllOperationalData: () => void;
+  previewMergeBackupJson: (jsonString: string) => MergePreviewSummary | null;
+  executeMergeBackup: (jsonString: string, conflictResolutions?: Record<string, 'keep_existing' | 'use_incoming'>) => { newRecordsCount: number; duplicateRecordsCount: number; conflictsCount: number };
   logAudit: (action: string, module: string, recordReference: string, details: string) => void;
 }
 
@@ -245,6 +265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [weapons, setWeapons] = useState<Weapon[]>(initialWeapons);
   const [weaponAssignments, setWeaponAssignments] = useState<WeaponAssignmentHistory[]>(initialWeaponAssignments);
   const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [inventoryCategories, setInventoryCategories] = useState<InventoryCategory[]>(initialInventoryCategories);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(initialStockTransactions);
   const [guardIssuedItems, setGuardIssuedItems] = useState<GuardIssuedItem[]>(initialGuardIssuedItems);
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
@@ -277,6 +298,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.weapons) setWeapons(parsed.weapons);
         if (parsed.weaponAssignments) setWeaponAssignments(parsed.weaponAssignments);
         if (parsed.products) setProducts(parsed.products);
+        if (parsed.inventoryCategories && Array.isArray(parsed.inventoryCategories) && parsed.inventoryCategories.length > 0) {
+          setInventoryCategories(parsed.inventoryCategories);
+        }
         if (parsed.stockTransactions) setStockTransactions(parsed.stockTransactions);
         if (parsed.guardIssuedItems) setGuardIssuedItems(parsed.guardIssuedItems);
         if (parsed.accounts) setAccounts(parsed.accounts);
@@ -328,6 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         weapons,
         weaponAssignments,
         products,
+        inventoryCategories,
         stockTransactions,
         guardIssuedItems,
         accounts,
@@ -355,6 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     weapons,
     weaponAssignments,
     products,
+    inventoryCategories,
     stockTransactions,
     guardIssuedItems,
     accounts,
@@ -1022,14 +1048,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // --- Products & Inventory ---
-  const addProduct = (prodData: Omit<Product, 'id' | 'currentStock'>): Product => {
+  const addProduct = (prodData: Omit<Product, 'id' | 'currentStock'> & { currentStock?: number }): Product => {
     const id = `PRD-${String(products.length + 1).padStart(3, '0')}`;
+    const initialQty = Number(prodData.currentStock) || 0;
     const newProduct: Product = {
       ...prodData,
       id,
-      currentStock: 0,
+      currentStock: initialQty,
     };
     setProducts((prev) => [newProduct, ...prev]);
+
+    if (initialQty > 0) {
+      addStockTransaction({
+        date: new Date().toISOString().split('T')[0],
+        type: 'Purchase',
+        referenceNo: `OPN-${Date.now().toString().slice(-6)}`,
+        productId: id,
+        productName: newProduct.productName,
+        productCode: newProduct.productCode,
+        quantityIn: initialQty,
+        quantityOut: 0,
+        unitPrice: newProduct.unitPrice,
+        totalAmount: newProduct.unitPrice * initialQty,
+        notes: 'Initial opening stock balance upon item creation',
+      });
+    }
+
     logAudit('Product Created', 'Inventory Master', newProduct.productCode, `Created inventory product: ${newProduct.productName}`);
     return newProduct;
   };
@@ -1045,6 +1089,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prod = products.find((p) => p.id === id);
     setProducts((prev) => prev.filter((p) => p.id !== id));
     logAudit('Product Deleted', 'Inventory Master', prod?.productCode || id, `Deleted inventory item: ${prod?.productName || prod?.name || id}`);
+  };
+
+  // --- Inventory Categories & Sub-Categories CRUD ---
+  const addInventoryCategory = (catData: Omit<InventoryCategory, 'id' | 'createdAt'>): InventoryCategory => {
+    const code = catData.code || catData.name.toUpperCase().replace(/\s+/g, '-').slice(0, 10);
+    const id = `CAT-${code}-${Date.now().toString().slice(-4)}`;
+    const newCat: InventoryCategory = {
+      ...catData,
+      id,
+      code,
+      createdAt: new Date().toISOString().split('T')[0],
+      subCategories: catData.subCategories || [],
+    };
+    setInventoryCategories((prev) => [...prev, newCat]);
+    logAudit('Category Created', 'Inventory Taxonomy', newCat.code, `Created category: ${newCat.name}`);
+    return newCat;
+  };
+
+  const updateInventoryCategory = (id: string, updates: Partial<InventoryCategory>) => {
+    setInventoryCategories((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+    );
+    // Also update category name in existing products if category name changed
+    if (updates.name) {
+      setProducts((prev) =>
+        prev.map((p) => (p.categoryId === id ? { ...p, category: updates.name! } : p))
+      );
+    }
+    logAudit('Category Updated', 'Inventory Taxonomy', id, `Updated category ID: ${id}`);
+  };
+
+  const deleteInventoryCategory = (id: string): { success: boolean; error?: string } => {
+    const target = inventoryCategories.find((c) => c.id === id);
+    if (!target) return { success: false, error: 'Category not found.' };
+
+    const linkedProducts = products.filter(
+      (p) => p.categoryId === id || p.category.toLowerCase() === target.name.toLowerCase()
+    );
+
+    if (linkedProducts.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete category "${target.name}" because ${linkedProducts.length} store items are assigned to it. Reassign or delete those items first.`,
+      };
+    }
+
+    setInventoryCategories((prev) => prev.filter((c) => c.id !== id));
+    logAudit('Category Deleted', 'Inventory Taxonomy', target.code, `Deleted category: ${target.name}`);
+    return { success: true };
+  };
+
+  const addInventorySubCategory = (
+    categoryId: string,
+    subData: Omit<InventorySubCategory, 'id' | 'categoryId' | 'createdAt'>
+  ): InventorySubCategory => {
+    const code = subData.code || subData.name.toUpperCase().replace(/\s+/g, '-').slice(0, 10);
+    const id = `SUB-${code}-${Date.now().toString().slice(-4)}`;
+    const newSub: InventorySubCategory = {
+      ...subData,
+      id,
+      categoryId,
+      code,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
+    setInventoryCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.id === categoryId) {
+          return {
+            ...cat,
+            subCategories: [...cat.subCategories, newSub],
+          };
+        }
+        return cat;
+      })
+    );
+
+    logAudit('Sub-Category Created', 'Inventory Taxonomy', newSub.code, `Added sub-category "${newSub.name}" under category ID: ${categoryId}`);
+    return newSub;
+  };
+
+  const updateInventorySubCategory = (
+    categoryId: string,
+    subId: string,
+    updates: Partial<InventorySubCategory>
+  ) => {
+    setInventoryCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.id === categoryId) {
+          return {
+            ...cat,
+            subCategories: cat.subCategories.map((sub) =>
+              sub.id === subId ? { ...sub, ...updates } : sub
+            ),
+          };
+        }
+        return cat;
+      })
+    );
+
+    if (updates.name) {
+      setProducts((prev) =>
+        prev.map((p) => (p.subCategoryId === subId ? { ...p, subcategory: updates.name! } : p))
+      );
+    }
+
+    logAudit('Sub-Category Updated', 'Inventory Taxonomy', subId, `Updated sub-category ${subId}`);
+  };
+
+  const deleteInventorySubCategory = (
+    categoryId: string,
+    subId: string
+  ): { success: boolean; error?: string } => {
+    const parentCat = inventoryCategories.find((c) => c.id === categoryId);
+    const targetSub = parentCat?.subCategories.find((s) => s.id === subId);
+    if (!targetSub) return { success: false, error: 'Sub-category not found.' };
+
+    const linkedProducts = products.filter(
+      (p) => p.subCategoryId === subId || p.subcategory?.toLowerCase() === targetSub.name.toLowerCase()
+    );
+
+    if (linkedProducts.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete sub-category "${targetSub.name}" because ${linkedProducts.length} store items are assigned to it.`,
+      };
+    }
+
+    setInventoryCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.id === categoryId) {
+          return {
+            ...cat,
+            subCategories: cat.subCategories.filter((sub) => sub.id !== subId),
+          };
+        }
+        return cat;
+      })
+    );
+
+    logAudit('Sub-Category Deleted', 'Inventory Taxonomy', targetSub.code, `Deleted sub-category: ${targetSub.name}`);
+    return { success: true };
   };
 
   const addStockTransaction = (txData: Omit<StockTransaction, 'id' | 'balanceAfter' | 'performedBy'>) => {
@@ -2206,10 +2392,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const receiveInventoryStock = (params: { productId: string; quantity: number; unitCost?: number; supplierName?: string; notes?: string }) => {
+  const receiveInventoryStock = (params: { productId: string; quantity: number; unitCost?: number; unitPrice?: number; supplierName?: string; notes?: string }) => {
     const prod = products.find((p) => p.id === params.productId);
     if (prod) {
-      const cost = params.unitCost || prod.unitPrice;
+      const cost = params.unitCost || params.unitPrice || prod.unitPrice;
       addStockTransaction({
         date: new Date().toISOString().split('T')[0],
         type: 'Purchase',
@@ -2226,6 +2412,377 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // --- Super Admin Data Management & Merging ---
+  const getDataSummaryCounts = (): DataSummaryCounts => {
+    const subCategoriesCount = inventoryCategories.reduce(
+      (sum, cat) => sum + (cat.subCategories?.length || 0),
+      0
+    );
+
+    const total =
+      guards.length +
+      sites.length +
+      clients.length +
+      weapons.length +
+      weaponAssignments.length +
+      products.length +
+      inventoryCategories.length +
+      subCategoriesCount +
+      stockTransactions.length +
+      guardIssuedItems.length +
+      accounts.length +
+      vouchers.length +
+      salarySlips.length +
+      clientInvoices.length +
+      attendanceRecords.length +
+      financeAccounts.length +
+      expenseCategories.length +
+      parties.length +
+      cashTransactions.length;
+
+    return {
+      usersCount: 6,
+      guardsCount: guards.length,
+      sitesCount: sites.length,
+      attendanceCount: attendanceRecords.length,
+      invoicesCount: clientInvoices.length,
+      paymentsCount: clientInvoices.filter((i) => i.status === 'Paid').length,
+      expensesCount: cashTransactions.filter((t) => t.direction === 'OUT').length,
+      journalEntriesCount: vouchers.length,
+      inventoryItemsCount: products.length,
+      inventoryTransactionsCount: stockTransactions.length,
+      hrRecordsCount: guards.length + attendanceRecords.length + salarySlips.length,
+      armouryRecordsCount: weapons.length + weaponAssignments.length,
+      categoriesCount: inventoryCategories.length,
+      subCategoriesCount,
+      totalRecordsCount: total,
+    };
+  };
+
+  const resetToCleanInitialDataset = () => {
+    // Keeps company settings, security settings, chart of accounts, and categories
+    // Cleans demo operational logs and keeps baseline structural seed data
+    setGuards(initialGuards);
+    setSites(initialSites);
+    setClients(initialClients);
+    setWeapons(initialWeapons);
+    setProducts(initialProducts);
+    setInventoryCategories(initialInventoryCategories);
+    setGuardAssignments([]);
+    setWeaponAssignments([]);
+    setStockTransactions([]);
+    setGuardIssuedItems([]);
+    setVouchers(initialVouchers.slice(0, 2)); // keep baseline vouchers
+    setSalarySlips([]);
+    setClientInvoices([]);
+    setAttendanceRecords([]);
+    setCashTransactions([]);
+
+    logAudit(
+      'Clean Dataset Reset',
+      'System',
+      'RESET',
+      'Reset system to clean baseline. Demo logs purged; accounts and settings preserved.'
+    );
+  };
+
+  const deleteAllOperationalData = () => {
+    // Keeps system structure, company profile, accounts, categories, and active Super Admin
+    setGuards([]);
+    setSites([]);
+    setClients([]);
+    setWeapons([]);
+    setGuardAssignments([]);
+    setWeaponAssignments([]);
+    setProducts([]);
+    setStockTransactions([]);
+    setGuardIssuedItems([]);
+    setVouchers([]);
+    setSalarySlips([]);
+    setClientInvoices([]);
+    setAttendanceRecords([]);
+    setCashTransactions([]);
+    setAuditLogs([
+      {
+        id: `LOG-${Date.now()}`,
+        action: 'Delete All Data',
+        module: 'System Administration',
+        recordReference: 'CRITICAL-WIPE',
+        details: 'Super Admin wiped all operational runtime database records.',
+        timestamp: new Date().toISOString(),
+        userName: 'Super Admin (Ali Akbar)',
+        userRole: 'Super Admin',
+      },
+    ]);
+  };
+
+  // Preview intelligent merge
+  const previewMergeBackupJson = (jsonString: string): MergePreviewSummary | null => {
+    try {
+      const incoming = JSON.parse(jsonString);
+      if (!incoming) return null;
+
+      let newCount = 0;
+      let dupCount = 0;
+      const conflicts: MergeConflictItem[] = [];
+      const breakdown: { entityName: string; currentCount: number; incomingCount: number; newCount: number }[] = [];
+
+      // Check Guards
+      if (Array.isArray(incoming.guards)) {
+        let nGuards = 0;
+        incoming.guards.forEach((g: Guard) => {
+          const exists = guards.some((cg) => cg.id === g.id || cg.guardCode === g.guardCode);
+          if (exists) dupCount++;
+          else {
+            newCount++;
+            nGuards++;
+          }
+        });
+        breakdown.push({ entityName: 'Guards', currentCount: guards.length, incomingCount: incoming.guards.length, newCount: nGuards });
+      }
+
+      // Check Sites
+      if (Array.isArray(incoming.sites)) {
+        let nSites = 0;
+        incoming.sites.forEach((s: Site) => {
+          const exists = sites.some((cs) => cs.id === s.id || cs.siteCode === s.siteCode);
+          if (exists) dupCount++;
+          else {
+            newCount++;
+            nSites++;
+          }
+        });
+        breakdown.push({ entityName: 'Sites', currentCount: sites.length, incomingCount: incoming.sites.length, newCount: nSites });
+      }
+
+      // Check Clients
+      if (Array.isArray(incoming.clients)) {
+        let nClients = 0;
+        incoming.clients.forEach((c: Client) => {
+          const exists = clients.some((cc) => cc.id === c.id || cc.clientCode === c.clientCode);
+          if (exists) dupCount++;
+          else {
+            newCount++;
+            nClients++;
+          }
+        });
+        breakdown.push({ entityName: 'Clients', currentCount: clients.length, incomingCount: incoming.clients.length, newCount: nClients });
+      }
+
+      // Check Weapons
+      if (Array.isArray(incoming.weapons)) {
+        let nWeapons = 0;
+        incoming.weapons.forEach((w: Weapon) => {
+          const exists = weapons.some((cw) => cw.id === w.id || cw.weaponCode === w.weaponCode || cw.serialNumber === w.serialNumber);
+          if (exists) dupCount++;
+          else {
+            newCount++;
+            nWeapons++;
+          }
+        });
+        breakdown.push({ entityName: 'Weapons', currentCount: weapons.length, incomingCount: incoming.weapons.length, newCount: nWeapons });
+      }
+
+      // Check Products
+      if (Array.isArray(incoming.products)) {
+        let nProducts = 0;
+        incoming.products.forEach((p: Product) => {
+          const exists = products.some((cp) => cp.id === p.id || cp.productCode === p.productCode);
+          if (exists) dupCount++;
+          else {
+            newCount++;
+            nProducts++;
+          }
+        });
+        breakdown.push({ entityName: 'Inventory Items', currentCount: products.length, incomingCount: incoming.products.length, newCount: nProducts });
+      }
+
+      // Check Vouchers (Financial Conflict Check)
+      if (Array.isArray(incoming.vouchers)) {
+        let nVouchers = 0;
+        incoming.vouchers.forEach((v: Voucher) => {
+          const existingVoucher = vouchers.find((cv) => cv.id === v.id || cv.voucherNo === v.voucherNo);
+          if (existingVoucher) {
+            dupCount++;
+            // Check if amounts or dates differ
+            if (existingVoucher.totalDebit !== v.totalDebit || existingVoucher.date !== v.date) {
+              conflicts.push({
+                id: v.id,
+                entity: 'Voucher',
+                name: `Voucher #${v.voucherNo} (${v.voucherType})`,
+                existingValue: `PKR ${existingVoucher.totalDebit.toLocaleString()} on ${existingVoucher.date}`,
+                incomingValue: `PKR ${v.totalDebit.toLocaleString()} on ${v.date}`,
+                reason: 'Voucher numbers match but monetary amount or posting date differs.',
+              });
+            }
+          } else {
+            newCount++;
+            nVouchers++;
+          }
+        });
+        breakdown.push({ entityName: 'Accounting Vouchers', currentCount: vouchers.length, incomingCount: incoming.vouchers.length, newCount: nVouchers });
+      }
+
+      const totalCurrent = getDataSummaryCounts().totalRecordsCount;
+
+      return {
+        currentTotalRecords: totalCurrent,
+        backupTotalRecords: (incoming.guards?.length || 0) + (incoming.sites?.length || 0) + (incoming.vouchers?.length || 0) + (incoming.products?.length || 0),
+        newRecordsCount: newCount,
+        duplicateRecordsCount: dupCount,
+        conflictsCount: conflicts.length,
+        entityBreakdown: breakdown,
+        conflicts,
+      };
+    } catch (e) {
+      console.error('Error previewing merge:', e);
+      return null;
+    }
+  };
+
+  // Execute Merge
+  const executeMergeBackup = (
+    jsonString: string,
+    conflictResolutions: Record<string, 'keep_existing' | 'use_incoming'> = {}
+  ): { newRecordsCount: number; duplicateRecordsCount: number; conflictsCount: number } => {
+    try {
+      const incoming = JSON.parse(jsonString);
+      if (!incoming) return { newRecordsCount: 0, duplicateRecordsCount: 0, conflictsCount: 0 };
+
+      let addedCount = 0;
+      let dupCount = 0;
+      let conflictsResolved = 0;
+
+      // Merge Guards
+      if (Array.isArray(incoming.guards)) {
+        const toAdd: Guard[] = [];
+        incoming.guards.forEach((g: Guard) => {
+          const exists = guards.some((cg) => cg.id === g.id || cg.guardCode === g.guardCode);
+          if (!exists) {
+            toAdd.push(g);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setGuards((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Sites
+      if (Array.isArray(incoming.sites)) {
+        const toAdd: Site[] = [];
+        incoming.sites.forEach((s: Site) => {
+          const exists = sites.some((cs) => cs.id === s.id || cs.siteCode === s.siteCode);
+          if (!exists) {
+            toAdd.push(s);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setSites((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Clients
+      if (Array.isArray(incoming.clients)) {
+        const toAdd: Client[] = [];
+        incoming.clients.forEach((c: Client) => {
+          const exists = clients.some((cc) => cc.id === c.id || cc.clientCode === c.clientCode);
+          if (!exists) {
+            toAdd.push(c);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setClients((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Weapons
+      if (Array.isArray(incoming.weapons)) {
+        const toAdd: Weapon[] = [];
+        incoming.weapons.forEach((w: Weapon) => {
+          const exists = weapons.some((cw) => cw.id === w.id || cw.weaponCode === w.weaponCode || cw.serialNumber === w.serialNumber);
+          if (!exists) {
+            toAdd.push(w);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setWeapons((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Products
+      if (Array.isArray(incoming.products)) {
+        const toAdd: Product[] = [];
+        incoming.products.forEach((p: Product) => {
+          const exists = products.some((cp) => cp.id === p.id || cp.productCode === p.productCode);
+          if (!exists) {
+            toAdd.push(p);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setProducts((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Categories
+      if (Array.isArray(incoming.inventoryCategories)) {
+        const toAdd: InventoryCategory[] = [];
+        incoming.inventoryCategories.forEach((cat: InventoryCategory) => {
+          const exists = inventoryCategories.some((cc) => cc.id === cat.id || cc.code === cat.code);
+          if (!exists) {
+            toAdd.push(cat);
+            addedCount++;
+          } else {
+            dupCount++;
+          }
+        });
+        if (toAdd.length > 0) setInventoryCategories((prev) => [...prev, ...toAdd]);
+      }
+
+      // Merge Vouchers with Conflict Resolution
+      if (Array.isArray(incoming.vouchers)) {
+        const toAdd: Voucher[] = [];
+        setVouchers((prev) => {
+          let updated = [...prev];
+          incoming.vouchers.forEach((v: Voucher) => {
+            const index = updated.findIndex((cv) => cv.id === v.id || cv.voucherNo === v.voucherNo);
+            if (index === -1) {
+              toAdd.push(v);
+              addedCount++;
+            } else {
+              dupCount++;
+              if (conflictResolutions[v.id] === 'use_incoming') {
+                updated[index] = v;
+                conflictsResolved++;
+              }
+            }
+          });
+          return [...updated, ...toAdd];
+        });
+      }
+
+      logAudit(
+        'Database Merged',
+        'Backup & Restore',
+        'MERGE-SUCCESS',
+        `Merged external database: +${addedCount} new records added, ${dupCount} duplicate records resolved.`
+      );
+
+      return {
+        newRecordsCount: addedCount,
+        duplicateRecordsCount: dupCount,
+        conflictsCount: conflictsResolved,
+      };
+    } catch (e) {
+      console.error('Error executing merge:', e);
+      return { newRecordsCount: 0, duplicateRecordsCount: 0, conflictsCount: 0 };
+    }
+  };
+
   const exportDataJson = (): string => {
     const fullBackup = {
       version: '1.0.0',
@@ -2239,6 +2796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       weapons,
       weaponAssignments,
       products,
+      inventoryCategories,
       stockTransactions,
       guardIssuedItems,
       accounts,
@@ -2288,6 +2846,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         weapons,
         weaponAssignments,
         products,
+        inventoryCategories,
         stockTransactions,
         inventoryTransactions: stockTransactions,
         guardIssuedItems,
@@ -2355,6 +2914,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProduct,
         updateProduct,
         deleteProduct,
+        addInventoryCategory,
+        updateInventoryCategory,
+        deleteInventoryCategory,
+        addInventorySubCategory,
+        updateInventorySubCategory,
+        deleteInventorySubCategory,
         addStockTransaction,
         issueItemToGuard,
         returnItemFromGuard,
@@ -2379,6 +2944,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         importDataJson,
         resetToSampleData,
         resetToInitialData,
+        getDataSummaryCounts,
+        resetToCleanInitialDataset,
+        deleteAllOperationalData,
+        previewMergeBackupJson,
+        executeMergeBackup,
         logAudit,
       }}
     >

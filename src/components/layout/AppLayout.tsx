@@ -9,6 +9,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  FolderTree,
   History,
   Laptop,
   Layers,
@@ -112,6 +113,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
       groupTitle: 'INVENTORY & UNIFORMS',
       items: [
         { id: 'inventory', label: 'Products & Store', icon: <Package className="w-4 h-4" />, badge: lowStockCount > 0 ? `${lowStockCount} Low` : undefined, badgeColor: 'bg-amber-900/60 text-amber-200' },
+        { id: 'categories', label: 'Category Hierarchy (Taxonomy)', icon: <FolderTree className="w-4 h-4 text-sky-400" /> },
         { id: 'uniform-issues', label: 'Uniform Issue Register', icon: <Layers className="w-4 h-4" /> },
       ],
     },
@@ -128,7 +130,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         { id: 'multi-account-expense', label: 'Multi-Account Cashbook', icon: <Wallet className="w-4 h-4 text-emerald-400" />, badge: 'Live Ledger', badgeColor: 'bg-emerald-900/80 text-emerald-200' },
         { id: 'salary-slips', label: 'Salary Slips (MSS Slip)', icon: <FileText className="w-4 h-4 text-emerald-400" />, badge: 'Print' },
         { id: 'vouchers', label: 'Double-Entry Vouchers', icon: <Receipt className="w-4 h-4" />, badge: vouchers.length },
-        { id: 'chart-of-accounts', label: 'Chart of Accounts', icon: <Building className="w-4 h-4" /> },
+        { id: 'chart-of-accounts', label: 'Chart of Accounts (COA)', icon: <Building className="w-4 h-4 text-amber-400" /> },
         { id: 'financial-reports', label: 'Ledgers & Statements', icon: <TrendingUp className="w-4 h-4" /> },
       ],
     },
@@ -136,6 +138,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
       groupTitle: 'SYSTEM & DEPLOYMENT',
       items: [
         { id: 'native-apps', label: 'Android & Windows App', icon: <Smartphone className="w-4 h-4 text-sky-400" />, badge: 'Apps', badgeColor: 'bg-sky-900/80 text-sky-200' },
+        { id: 'backup-restore', label: 'Backup, Restore & Merge', icon: <Database className="w-4 h-4 text-purple-400" /> },
+        { id: 'data-management', label: 'Super Admin Data Management', icon: <Layers className="w-4 h-4 text-red-400" /> },
         { id: 'audit-logs', label: 'System Audit Logs', icon: <History className="w-4 h-4" /> },
         { id: 'settings', label: 'Settings & Company Profile', icon: <Settings className="w-4 h-4" /> },
       ],
