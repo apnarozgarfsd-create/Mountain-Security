@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { initialInventoryCategories } from '../data/categorySeedData';
 import {
   initialAccounts,
@@ -322,6 +322,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [printPayload, setPrintPayload] = useState<PrintDocumentPayload | null>(null);
 
+  const isLoadedRef = useRef<boolean>(false);
+
   // Load from LocalStorage on mount
   useEffect(() => {
     try {
@@ -340,15 +342,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (parsed.stockTransactions) setStockTransactions(parsed.stockTransactions);
         if (parsed.guardIssuedItems) setGuardIssuedItems(parsed.guardIssuedItems);
-        if (parsed.accounts) setAccounts(parsed.accounts);
-        if (parsed.vouchers) setVouchers(parsed.vouchers);
-        if (parsed.openingBalances && Array.isArray(parsed.openingBalances) && parsed.openingBalances.length > 0) {
+        if (parsed.accounts && Array.isArray(parsed.accounts)) setAccounts(parsed.accounts);
+        if (parsed.vouchers && Array.isArray(parsed.vouchers)) setVouchers(parsed.vouchers);
+        if (parsed.openingBalances && Array.isArray(parsed.openingBalances)) {
           setOpeningBalances(parsed.openingBalances);
         }
         if (parsed.openingBalanceAudits && Array.isArray(parsed.openingBalanceAudits)) {
           setOpeningBalanceAudits(parsed.openingBalanceAudits);
         }
-        if (parsed.openingBatches && Array.isArray(parsed.openingBatches) && parsed.openingBatches.length > 0) {
+        if (parsed.openingBatches && Array.isArray(parsed.openingBatches)) {
           setOpeningBatches(parsed.openingBatches);
         }
         if (parsed.currentFiscalYear) {
@@ -387,11 +389,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.error('Error loading saved state:', e);
+    } finally {
+      isLoadedRef.current = true;
     }
   }, []);
 
   // Save to LocalStorage whenever state changes
   useEffect(() => {
+    if (!isLoadedRef.current) return;
     try {
       const stateToSave = {
         clients,
@@ -1436,7 +1441,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateAccount = (id: string, updated: Partial<Account>) => {
     setAccounts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...updated } : a))
+      prev.map((a) => (a.id === id || a.accountCode === id || a.id === `ACC-${id}` ? { ...a, ...updated } : a))
     );
     logAudit('Account Updated', 'Chart of Accounts', id, `Modified account properties for ${id}`);
   };
@@ -1486,7 +1491,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fiscalYear: string = currentFiscalYear
   ): OpeningBalance | undefined => {
     return openingBalances.find(
-      (ob) => ob.accountId === accountId && ob.fiscalYear === fiscalYear
+      (ob) =>
+        ob.fiscalYear === fiscalYear &&
+        (ob.accountId === accountId ||
+          ob.accountCode === accountId ||
+          ob.accountId === `ACC-${accountId}` ||
+          (accountId && ob.accountId === accountId.replace(/^ACC-/, '')))
     );
   };
 
@@ -1511,21 +1521,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const acc = accounts.find((a) => a.id === data.accountId);
-    if (!acc) return { success: false, error: 'Account not found in Chart of Accounts.' };
+    // Resolve target account robustly by id, accountCode, or ACC- prefix
+    const acc = accounts.find(
+      (a) =>
+        a.id === data.accountId ||
+        a.accountCode === data.accountId ||
+        a.id === `ACC-${data.accountId}` ||
+        (data.accountId && a.id.replace(/^ACC-/, '') === data.accountId)
+    );
+    if (!acc) {
+      return {
+        success: false,
+        error: `Account "${data.accountId}" not found in Chart of Accounts. Update affected zero records.`,
+      };
+    }
+
+    const isMatch = (targetId?: string, targetCode?: string) => {
+      return (
+        targetId === acc.id ||
+        targetCode === acc.accountCode ||
+        targetId === acc.accountCode ||
+        (acc.id && targetId === acc.id.replace(/^ACC-/, '')) ||
+        (targetId && `ACC-${targetId}` === acc.id)
+      );
+    };
 
     const existingOb = openingBalances.find(
-      (ob) => ob.accountId === data.accountId && ob.fiscalYear === fy
+      (ob) => ob.fiscalYear === fy && isMatch(ob.accountId, ob.accountCode)
     );
 
-    const oldAmount = existingOb ? Number(existingOb.amount) || 0 : 0;
-    const oldType = existingOb ? existingOb.balanceType : (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+    const oldAmount = existingOb ? Number(existingOb.amount) || 0 : (Number(acc.openingBalance) || 0);
+    const oldType = existingOb ? existingOb.balanceType : (acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit'));
     const newAmount = Math.max(0, Number(data.amount) || 0);
     const newType = data.balanceType;
     const date = data.openingDate || (existingOb?.openingDate || (batch?.startDate || '2026-07-01'));
     const ref = data.reference || (existingOb?.reference || (batch?.voucherNo || 'OB-0001'));
 
-    // If posted, requirement #7 specifies: require Reason for change
+    // If posted, require Reason for change
     if (batchStatus === 'Posted' && !data.reason && (oldAmount !== newAmount || oldType !== newType)) {
       return {
         success: false,
@@ -1534,6 +1566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Maintain Audit Trail
+    let newAudits = openingBalanceAudits;
     if (oldAmount !== newAmount || oldType !== newType) {
       const auditEntry: OpeningBalanceAudit = {
         id: `AUD-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1549,7 +1582,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newType,
         reason: data.reason || (existingOb ? 'Updated opening balance' : 'Initial opening balance entry'),
       };
-      setOpeningBalanceAudits((prev) => [auditEntry, ...prev]);
+      newAudits = [auditEntry, ...openingBalanceAudits];
+      setOpeningBalanceAudits(newAudits);
     }
 
     const updatedOb: OpeningBalance = {
@@ -1573,14 +1607,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
     };
 
-    setOpeningBalances((prev) => {
-      const filtered = prev.filter((b) => !(b.accountId === acc.id && b.fiscalYear === fy));
+    const newOpeningBalances = (() => {
+      const filtered = openingBalances.filter(
+        (b) => !(b.fiscalYear === fy && isMatch(b.accountId, b.accountCode))
+      );
       return [...filtered, updatedOb];
-    });
+    })();
+    setOpeningBalances(newOpeningBalances);
 
     // Calculate effect on account balance
     let oldEffect = 0;
-    if (existingOb) {
+    if (existingOb || acc.openingBalance > 0) {
       if (acc.category === 'Asset' || acc.category === 'Expense') {
         oldEffect = oldType === 'Debit' ? oldAmount : -oldAmount;
       } else {
@@ -1595,66 +1632,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const balanceDelta = newEffect - oldEffect;
 
-    setAccounts((prev) =>
-      prev.map((a) => {
-        if (a.id === acc.id) {
-          return {
-            ...a,
-            openingBalance: newAmount,
-            openingBalanceType: newType,
-            currentBalance: a.currentBalance + (batchStatus === 'Posted' ? balanceDelta : 0),
-          };
-        }
-        return a;
-      })
-    );
+    const newAccounts = accounts.map((a) => {
+      if (isMatch(a.id, a.accountCode)) {
+        return {
+          ...a,
+          openingBalance: newAmount,
+          openingBalanceType: newType,
+          currentBalance: a.currentBalance + (batchStatus === 'Posted' ? balanceDelta : 0),
+        };
+      }
+      return a;
+    });
+    setAccounts(newAccounts);
 
     // If batch was already 'Posted', update the existing opening voucher entry in place to avoid duplicate entries!
+    let newVouchers = vouchers;
     if (batchStatus === 'Posted') {
       const voucherNo = batch?.voucherNo || 'OB-0001';
-      setVouchers((prev) =>
-        prev.map((v) => {
-          if (v.voucherNo === voucherNo || (v.referenceNo && v.referenceNo.includes(`OB-${fy}`))) {
-            const hasEntry = v.entries.some((e) => e.accountId === acc.id);
-            let updatedEntries = [];
-            if (hasEntry) {
-              updatedEntries = v.entries.map((e) => {
-                if (e.accountId === acc.id) {
-                  return {
-                    ...e,
-                    debit: newType === 'Debit' ? newAmount : 0,
-                    credit: newType === 'Credit' ? newAmount : 0,
-                    narration: `Opening Balance - ${acc.accountName}`,
-                  };
-                }
-                return e;
-              });
-            } else {
-              updatedEntries = [
-                ...v.entries,
-                {
-                  id: `VENT-OB-${Date.now()}`,
+      newVouchers = vouchers.map((v) => {
+        if (v.voucherNo === voucherNo || (v.referenceNo && v.referenceNo.includes(`OB-${fy}`))) {
+          const hasEntry = v.entries.some((e) => isMatch(e.accountId, e.accountCode));
+          let updatedEntries: VoucherEntry[] = [];
+          if (hasEntry) {
+            updatedEntries = v.entries.map((e) => {
+              if (isMatch(e.accountId, e.accountCode)) {
+                return {
+                  ...e,
                   accountId: acc.id,
                   accountCode: acc.accountCode,
                   accountName: acc.accountName,
                   debit: newType === 'Debit' ? newAmount : 0,
                   credit: newType === 'Credit' ? newAmount : 0,
                   narration: `Opening Balance - ${acc.accountName}`,
-                },
-              ];
-            }
-            const totDebit = updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0);
-            const totCredit = updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0);
-            return {
-              ...v,
-              entries: updatedEntries,
-              totalDebit: totDebit,
-              totalCredit: totCredit,
-            };
+                };
+              }
+              return e;
+            });
+          } else {
+            updatedEntries = [
+              ...v.entries,
+              {
+                id: `VENT-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                accountId: acc.id,
+                accountCode: acc.accountCode,
+                accountName: acc.accountName,
+                debit: newType === 'Debit' ? newAmount : 0,
+                credit: newType === 'Credit' ? newAmount : 0,
+                narration: `Opening Balance - ${acc.accountName}`,
+              },
+            ];
           }
-          return v;
-        })
-      );
+          const totDebit = updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0);
+          const totCredit = updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0);
+          return {
+            ...v,
+            entries: updatedEntries,
+            totalDebit: totDebit,
+            totalCredit: totCredit,
+          };
+        }
+        return v;
+      });
+      setVouchers(newVouchers);
     }
 
     logAudit(
@@ -1663,6 +1702,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       acc.accountCode,
       `Opening balance for ${acc.accountCode} (${acc.accountName}) set to PKR ${newAmount.toLocaleString()} (${newType}). Fiscal Year: ${fy}.${data.reason ? ' Reason: ' + data.reason : ''}`
     );
+
+    // Synchronously write to localStorage immediately so that state changes survive any instant reload
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const baseState = stored ? JSON.parse(stored) : {};
+      const stateToPersist = {
+        ...baseState,
+        accounts: newAccounts,
+        openingBalances: newOpeningBalances,
+        vouchers: newVouchers,
+        openingBalanceAudits: newAudits,
+        openingBatches,
+        currentFiscalYear,
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToPersist));
+    } catch (e) {
+      console.error('Direct localStorage persistence error in saveOpeningBalance:', e);
+    }
 
     return { success: true };
   };
@@ -1680,85 +1737,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Cannot clear locked opening balance. Only Super Admin can unlock.' };
     }
 
-    const existingOb = openingBalances.find(
-      (ob) => ob.accountId === accountId && ob.fiscalYear === fy
+    const acc = accounts.find(
+      (a) =>
+        a.id === accountId ||
+        a.accountCode === accountId ||
+        a.id === `ACC-${accountId}` ||
+        (accountId && a.id.replace(/^ACC-/, '') === accountId)
     );
-    if (!existingOb) return { success: true };
+
+    const isMatch = (targetId?: string, targetCode?: string) => {
+      if (acc) {
+        return (
+          targetId === acc.id ||
+          targetCode === acc.accountCode ||
+          targetId === acc.accountCode ||
+          (acc.id && targetId === acc.id.replace(/^ACC-/, '')) ||
+          (targetId && `ACC-${targetId}` === acc.id)
+        );
+      }
+      return targetId === accountId || targetCode === accountId;
+    };
+
+    const existingOb = openingBalances.find(
+      (ob) => ob.fiscalYear === fy && isMatch(ob.accountId, ob.accountCode)
+    );
+    if (!existingOb && !acc?.openingBalance) return { success: true };
 
     if (batchStatus === 'Posted' && !reason) {
       return { success: false, error: 'A reason for change is required to clear a posted opening balance.' };
     }
 
-    const acc = accounts.find((a) => a.id === accountId);
-    if (existingOb.amount > 0) {
-      setOpeningBalanceAudits((prev) => [
-        {
-          id: `AUD-OB-${Date.now()}`,
-          openingBalanceId: existingOb.id,
-          accountId,
-          accountCode: existingOb.accountCode,
-          accountName: existingOb.accountName,
-          user: currentUserRole,
-          timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
-          oldAmount: existingOb.amount,
-          newAmount: 0,
-          oldType: existingOb.balanceType,
-          newType: existingOb.balanceType,
-          reason: reason || 'Cleared opening balance',
-        },
-        ...prev,
-      ]);
+    let newAudits = openingBalanceAudits;
+    const oldAmt = existingOb ? existingOb.amount : (acc?.openingBalance || 0);
+    const oldTyp = existingOb ? existingOb.balanceType : (acc?.openingBalanceType || 'Debit');
+    if (oldAmt > 0) {
+      const auditEntry: OpeningBalanceAudit = {
+        id: `AUD-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        openingBalanceId: existingOb?.id,
+        accountId: acc ? acc.id : accountId,
+        accountCode: acc ? acc.accountCode : existingOb?.accountCode || accountId,
+        accountName: acc ? acc.accountName : existingOb?.accountName || accountId,
+        user: currentUserRole,
+        timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
+        oldAmount: oldAmt,
+        newAmount: 0,
+        oldType: oldTyp,
+        newType: oldTyp,
+        reason: reason || 'Cleared opening balance',
+      };
+      newAudits = [auditEntry, ...openingBalanceAudits];
+      setOpeningBalanceAudits(newAudits);
     }
 
-    setOpeningBalances((prev) =>
-      prev.filter((b) => !(b.accountId === accountId && b.fiscalYear === fy))
+    const newOpeningBalances = openingBalances.filter(
+      (b) => !(b.fiscalYear === fy && isMatch(b.accountId, b.accountCode))
     );
+    setOpeningBalances(newOpeningBalances);
+
+    let newAccounts = accounts;
+    let newVouchers = vouchers;
 
     if (acc) {
       let oldEffect = 0;
       if (acc.category === 'Asset' || acc.category === 'Expense') {
-        oldEffect = existingOb.balanceType === 'Debit' ? existingOb.amount : -existingOb.amount;
+        oldEffect = oldTyp === 'Debit' ? oldAmt : -oldAmt;
       } else {
-        oldEffect = existingOb.balanceType === 'Credit' ? existingOb.amount : -existingOb.amount;
+        oldEffect = oldTyp === 'Credit' ? oldAmt : -oldAmt;
       }
 
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === accountId
-            ? {
-                ...a,
-                openingBalance: 0,
-                currentBalance: a.currentBalance - (batchStatus === 'Posted' ? oldEffect : 0),
-              }
-            : a
-        )
+      newAccounts = accounts.map((a) =>
+        isMatch(a.id, a.accountCode)
+          ? {
+              ...a,
+              openingBalance: 0,
+              currentBalance: a.currentBalance - (batchStatus === 'Posted' ? oldEffect : 0),
+            }
+          : a
       );
+      setAccounts(newAccounts);
 
       if (batchStatus === 'Posted') {
         const voucherNo = batch?.voucherNo || 'OB-0001';
-        setVouchers((prev) =>
-          prev.map((v) => {
-            if (v.voucherNo === voucherNo) {
-              const updatedEntries = v.entries.filter((e) => e.accountId !== accountId);
-              return {
-                ...v,
-                entries: updatedEntries,
-                totalDebit: updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0),
-                totalCredit: updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0),
-              };
-            }
-            return v;
-          })
-        );
+        newVouchers = vouchers.map((v) => {
+          if (v.voucherNo === voucherNo || (v.referenceNo && v.referenceNo.includes(`OB-${fy}`))) {
+            const updatedEntries = v.entries.filter((e) => !isMatch(e.accountId, e.accountCode));
+            return {
+              ...v,
+              entries: updatedEntries,
+              totalDebit: updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0),
+              totalCredit: updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0),
+            };
+          }
+          return v;
+        });
+        setVouchers(newVouchers);
       }
     }
 
     logAudit(
       'Opening Balance Cleared',
       'Chart of Accounts',
-      existingOb.accountCode,
-      `Cleared opening balance for ${existingOb.accountCode} (${existingOb.accountName}). Fiscal Year: ${fy}`
+      acc ? acc.accountCode : accountId,
+      `Cleared opening balance for ${acc ? acc.accountCode + ' (' + acc.accountName + ')' : accountId}. Fiscal Year: ${fy}`
     );
+
+    // Direct synchronous persistence to localStorage
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const baseState = stored ? JSON.parse(stored) : {};
+      const stateToPersist = {
+        ...baseState,
+        accounts: newAccounts,
+        openingBalances: newOpeningBalances,
+        vouchers: newVouchers,
+        openingBalanceAudits: newAudits,
+        openingBatches,
+        currentFiscalYear,
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToPersist));
+    } catch (e) {
+      console.error('Direct localStorage persistence error in clearOpeningBalance:', e);
+    }
 
     return { success: true };
   };

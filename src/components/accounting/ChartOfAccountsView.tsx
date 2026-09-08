@@ -225,7 +225,15 @@ export const ChartOfAccountsView: React.FC = () => {
       return;
     }
 
-    const existingOb = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
+    const existingOb = openingBalances.find(
+      (b) =>
+        b.fiscalYear === currentFiscalYear &&
+        (b.accountId === acc.id ||
+          b.accountCode === acc.accountCode ||
+          b.accountId === acc.accountCode ||
+          (acc.id && b.accountId === acc.id.replace(/^ACC-/, '')) ||
+          (b.accountId && `ACC-${b.accountId}` === acc.id))
+    );
     const initialAmount = existingOb ? existingOb.amount : Number(acc.openingBalance) || 0;
     const initialType: BalanceType = existingOb
       ? existingOb.balanceType
@@ -303,10 +311,19 @@ export const ChartOfAccountsView: React.FC = () => {
     e.preventDefault();
     if (!editingAccount || !accountCode.trim() || !accountName.trim()) return;
 
+    const existingOb = openingBalances.find(
+      (b) =>
+        b.fiscalYear === currentFiscalYear &&
+        (b.accountId === editingAccount.id ||
+          b.accountCode === editingAccount.accountCode ||
+          b.accountId === editingAccount.accountCode ||
+          (editingAccount.id && b.accountId === editingAccount.id.replace(/^ACC-/, '')) ||
+          (b.accountId && `ACC-${b.accountId}` === editingAccount.id))
+    );
+    const prevAmount = existingOb ? existingOb.amount : Number(editingAccount.openingBalance) || 0;
+    const prevType = existingOb ? existingOb.balanceType : editingAccount.openingBalanceType;
+
     if (batchStatus === 'Posted' && !openingBalanceReason.trim()) {
-      const existingOb = openingBalances.find((b) => b.accountId === editingAccount.id && b.fiscalYear === currentFiscalYear);
-      const prevAmount = existingOb ? existingOb.amount : Number(editingAccount.openingBalance) || 0;
-      const prevType = existingOb ? existingOb.balanceType : editingAccount.openingBalanceType;
       if (prevAmount !== Number(openingBalance) || prevType !== openingBalanceType) {
         setActionNotice({
           type: 'error',
@@ -318,9 +335,6 @@ export const ChartOfAccountsView: React.FC = () => {
     }
 
     if (batchStatus === 'Locked' && !isSuperAdmin) {
-      const existingOb = openingBalances.find((b) => b.accountId === editingAccount.id && b.fiscalYear === currentFiscalYear);
-      const prevAmount = existingOb ? existingOb.amount : Number(editingAccount.openingBalance) || 0;
-      const prevType = existingOb ? existingOb.balanceType : editingAccount.openingBalanceType;
       if (prevAmount !== Number(openingBalance) || prevType !== openingBalanceType) {
         setActionNotice({
           type: 'warning',

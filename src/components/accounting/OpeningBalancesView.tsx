@@ -87,11 +87,22 @@ export const OpeningBalancesView: React.FC = () => {
   const currentBatch = openingBatches.find((b) => b.fiscalYear === currentFiscalYear);
   const batchStatus = currentBatch ? currentBatch.status : 'Draft';
 
+  // Helper to match an account against an opening balance record
+  const isAccountMatch = (acc: Account, obAccountId?: string, obAccountCode?: string) => {
+    return (
+      obAccountId === acc.id ||
+      obAccountCode === acc.accountCode ||
+      obAccountId === acc.accountCode ||
+      (acc.id && obAccountId === acc.id.replace(/^ACC-/, '')) ||
+      (obAccountId && `ACC-${obAccountId}` === acc.id)
+    );
+  };
+
   // Accounts combined with their opening balance for current fiscal year
   const accountsWithOB = useMemo(() => {
     return accounts.map((acc) => {
       const ob = openingBalances.find(
-        (b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear
+        (b) => b.fiscalYear === currentFiscalYear && isAccountMatch(acc, b.accountId, b.accountCode)
       );
 
       const amount = ob ? Number(ob.amount) || 0 : Number(acc.openingBalance) || 0;
@@ -172,7 +183,7 @@ export const OpeningBalancesView: React.FC = () => {
     }
 
     const existingOb = openingBalances.find(
-      (ob) => ob.accountId === acc.id && ob.fiscalYear === currentFiscalYear
+      (ob) => ob.fiscalYear === currentFiscalYear && isAccountMatch(acc, ob.accountId, ob.accountCode)
     );
 
     setSelectedAccountForEdit(acc);
