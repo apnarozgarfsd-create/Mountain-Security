@@ -2,6 +2,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Building,
+  Calendar,
   CheckCircle2,
   ChevronRight,
   DollarSign,
@@ -9,20 +10,24 @@ import {
   FileSpreadsheet,
   FileText,
   FolderTree,
+  History,
   Lock,
   Pencil,
   Plus,
   Power,
   Printer,
+  RotateCcw,
+  Scale,
   Search,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Wallet,
   X,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Account, AccountCategory } from '../../types';
+import { Account, AccountCategory, BalanceType } from '../../types';
 import { formatPKR } from '../../utils/formatters';
 
 export const ChartOfAccountsView: React.FC = () => {
@@ -37,6 +42,11 @@ export const ChartOfAccountsView: React.FC = () => {
     deleteAccount,
     triggerPrint,
     logAudit,
+    openingBalances,
+    openingBatches,
+    currentFiscalYear,
+    saveOpeningBalance,
+    setActiveTab,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,13 +67,48 @@ export const ChartOfAccountsView: React.FC = () => {
   const [category, setCategory] = useState<AccountCategory>('Expense');
   const [subcategory, setSubcategory] = useState('');
   const [openingBalance, setOpeningBalance] = useState<number>(0);
+  const [openingBalanceType, setOpeningBalanceType] = useState<BalanceType>('Debit');
+  const [openingBalanceDate, setOpeningBalanceDate] = useState('2026-07-01');
+  const [openingBalanceRef, setOpeningBalanceRef] = useState('OB-0001');
+  const [openingBalanceNotes, setOpeningBalanceNotes] = useState('');
+  const [openingBalanceReason, setOpeningBalanceReason] = useState('');
   const [status, setStatus] = useState<'Active' | 'Inactive'>('Active');
   const [description, setDescription] = useState('');
+
+  // Quick Opening Balance Modal State
+  const [isQuickOBModalOpen, setIsQuickOBModalOpen] = useState(false);
+  const [quickOBAccount, setQuickOBAccount] = useState<Account | null>(null);
+
+  const currentBatch = openingBatches.find((b) => b.fiscalYear === currentFiscalYear);
+  const batchStatus = currentBatch ? currentBatch.status : 'Draft';
+  const isSuperAdmin = currentUserRole === 'Super Admin';
 
   const categories: AccountCategory[] = ['Asset', 'Liability', 'Equity', 'Income', 'Expense'];
 
   // Permissions: Super Admin & Accountant can edit/delete accounts
   const canManageAccounts = currentUserRole === 'Super Admin' || currentUserRole === 'Accountant';
+
+  // Opening Balance Totals for Current Fiscal Year
+  const totalOpeningDebit = accounts.reduce((sum, acc) => {
+    const ob = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
+    const amount = ob ? Number(ob.amount) || 0 : Number(acc.openingBalance) || 0;
+    const type = ob
+      ? ob.balanceType
+      : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+    return sum + (type === 'Debit' ? amount : 0);
+  }, 0);
+
+  const totalOpeningCredit = accounts.reduce((sum, acc) => {
+    const ob = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
+    const amount = ob ? Number(ob.amount) || 0 : Number(acc.openingBalance) || 0;
+    const type = ob
+      ? ob.balanceType
+      : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+    return sum + (type === 'Credit' ? amount : 0);
+  }, 0);
+
+  const obDiff = totalOpeningDebit - totalOpeningCredit;
+  const isObBalanced = Math.abs(obDiff) < 0.01;
 
   // Balance totals
   const totalAssets = accounts
@@ -119,6 +164,11 @@ export const ChartOfAccountsView: React.FC = () => {
     setCategory('Expense');
     setSubcategory('Operating Expenses');
     setOpeningBalance(0);
+    setOpeningBalanceType('Debit');
+    setOpeningBalanceDate('2026-07-01');
+    setOpeningBalanceRef('OB-0001');
+    setOpeningBalanceNotes('');
+    setOpeningBalanceReason('');
     setStatus('Active');
     setDescription('');
     setIsAddAccountOpen(true);
@@ -134,14 +184,61 @@ export const ChartOfAccountsView: React.FC = () => {
       setTimeout(() => setActionNotice(null), 4000);
       return;
     }
+    const existingOb = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
+    const initialAmount = existingOb ? existingOb.amount : Number(acc.openingBalance) || 0;
+    const initialType: BalanceType = existingOb
+      ? existingOb.balanceType
+      : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+
     setEditingAccount(acc);
     setAccountCode(acc.accountCode);
     setAccountName(acc.accountName);
     setCategory(acc.category);
     setSubcategory(acc.subcategory || `${acc.category} Account`);
-    setOpeningBalance(acc.openingBalance || 0);
+    setOpeningBalance(initialAmount);
+    setOpeningBalanceType(initialType);
+    setOpeningBalanceDate(existingOb?.openingDate || '2026-07-01');
+    setOpeningBalanceRef(existingOb?.reference || 'OB-0001');
+    setOpeningBalanceNotes(existingOb?.notes || '');
+    setOpeningBalanceReason('');
     setStatus(acc.status || 'Active');
     setDescription(acc.description || '');
+  };
+
+  const handleOpenQuickOBModal = (acc: Account, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!canManageAccounts) {
+      setActionNotice({
+        type: 'warning',
+        message: 'Only Super Admin and Accountant roles are authorized to modify opening balances.',
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      return;
+    }
+
+    if (batchStatus === 'Locked' && !isSuperAdmin) {
+      setActionNotice({
+        type: 'warning',
+        message: `Fiscal Year ${currentFiscalYear} opening balances are locked. Super Admin override required.`,
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      return;
+    }
+
+    const existingOb = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
+    const initialAmount = existingOb ? existingOb.amount : Number(acc.openingBalance) || 0;
+    const initialType: BalanceType = existingOb
+      ? existingOb.balanceType
+      : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+
+    setQuickOBAccount(acc);
+    setOpeningBalance(initialAmount);
+    setOpeningBalanceType(initialType);
+    setOpeningBalanceDate(existingOb?.openingDate || '2026-07-01');
+    setOpeningBalanceRef(existingOb?.reference || 'OB-0001');
+    setOpeningBalanceNotes(existingOb?.notes || '');
+    setOpeningBalanceReason('');
+    setIsQuickOBModalOpen(true);
   };
 
   const handleOpenDeleteModal = (acc: Account, e?: React.MouseEvent) => {
@@ -169,18 +266,31 @@ export const ChartOfAccountsView: React.FC = () => {
     e.preventDefault();
     if (!accountCode.trim() || !accountName.trim()) return;
 
-    addAccount({
+    const newAcc = addAccount({
       accountCode: accountCode.trim(),
       accountName: accountName.trim(),
       category,
       subcategory: subcategory.trim() || `${category} Account`,
       openingBalance: Number(openingBalance) || 0,
+      openingBalanceType,
       isSystem: false,
       status: status || 'Active',
       description: description.trim(),
     });
 
-    logAudit('Create Account', 'Accounting', accountCode, `Created new ${category} account "${accountName}"`);
+    if (newAcc && Number(openingBalance) > 0) {
+      saveOpeningBalance({
+        accountId: newAcc.id,
+        fiscalYear: currentFiscalYear,
+        balanceType: openingBalanceType,
+        amount: Number(openingBalance) || 0,
+        openingDate: openingBalanceDate,
+        reference: openingBalanceRef,
+        notes: openingBalanceNotes,
+      });
+    }
+
+    logAudit('Create Account', 'Accounting', accountCode, `Created new ${category} account "${accountName}" with Opening Balance PKR ${openingBalance} (${openingBalanceType})`);
     setIsAddAccountOpen(false);
     setActionNotice({
       type: 'success',
@@ -193,6 +303,34 @@ export const ChartOfAccountsView: React.FC = () => {
     e.preventDefault();
     if (!editingAccount || !accountCode.trim() || !accountName.trim()) return;
 
+    if (batchStatus === 'Posted' && !openingBalanceReason.trim()) {
+      const existingOb = openingBalances.find((b) => b.accountId === editingAccount.id && b.fiscalYear === currentFiscalYear);
+      const prevAmount = existingOb ? existingOb.amount : Number(editingAccount.openingBalance) || 0;
+      const prevType = existingOb ? existingOb.balanceType : editingAccount.openingBalanceType;
+      if (prevAmount !== Number(openingBalance) || prevType !== openingBalanceType) {
+        setActionNotice({
+          type: 'error',
+          message: 'A reason for change is mandatory when modifying a posted opening balance.',
+        });
+        setTimeout(() => setActionNotice(null), 4000);
+        return;
+      }
+    }
+
+    if (batchStatus === 'Locked' && !isSuperAdmin) {
+      const existingOb = openingBalances.find((b) => b.accountId === editingAccount.id && b.fiscalYear === currentFiscalYear);
+      const prevAmount = existingOb ? existingOb.amount : Number(editingAccount.openingBalance) || 0;
+      const prevType = existingOb ? existingOb.balanceType : editingAccount.openingBalanceType;
+      if (prevAmount !== Number(openingBalance) || prevType !== openingBalanceType) {
+        setActionNotice({
+          type: 'warning',
+          message: 'Opening balances are locked for this fiscal year. Super Admin override required.',
+        });
+        setTimeout(() => setActionNotice(null), 4000);
+        return;
+      }
+    }
+
     updateAccount(editingAccount.id, {
       accountCode: accountCode.trim(),
       accountName: accountName.trim(),
@@ -200,15 +338,73 @@ export const ChartOfAccountsView: React.FC = () => {
       subcategory: subcategory.trim() || `${category} Account`,
       status,
       description: description.trim(),
+      openingBalance: Number(openingBalance) || 0,
+      openingBalanceType,
     });
 
-    logAudit('Update Account', 'Accounting', accountCode, `Modified account details for "${accountName}" (${accountCode})`);
+    saveOpeningBalance({
+      accountId: editingAccount.id,
+      fiscalYear: currentFiscalYear,
+      balanceType: openingBalanceType,
+      amount: Number(openingBalance) || 0,
+      openingDate: openingBalanceDate,
+      reference: openingBalanceRef,
+      notes: openingBalanceNotes,
+      reason: openingBalanceReason,
+    });
+
+    logAudit('Update Account', 'Accounting', accountCode, `Modified account details & opening balance for "${accountName}" (${accountCode})`);
     setEditingAccount(null);
     setActionNotice({
       type: 'success',
       message: `Account "${accountName}" updated successfully!`,
     });
     setTimeout(() => setActionNotice(null), 3000);
+  };
+
+  const handleSaveQuickOB = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickOBAccount) return;
+
+    if (batchStatus === 'Posted' && !openingBalanceReason.trim()) {
+      setActionNotice({
+        type: 'error',
+        message: 'A reason for change is required when updating a posted opening balance.',
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      return;
+    }
+
+    const res = saveOpeningBalance({
+      accountId: quickOBAccount.id,
+      fiscalYear: currentFiscalYear,
+      balanceType: openingBalanceType,
+      amount: Number(openingBalance) || 0,
+      openingDate: openingBalanceDate,
+      reference: openingBalanceRef,
+      notes: openingBalanceNotes,
+      reason: openingBalanceReason,
+    });
+
+    if (res.success) {
+      updateAccount(quickOBAccount.id, {
+        openingBalance: Number(openingBalance) || 0,
+        openingBalanceType,
+      });
+      setIsQuickOBModalOpen(false);
+      setQuickOBAccount(null);
+      setActionNotice({
+        type: 'success',
+        message: `Opening balance for ${quickOBAccount.accountCode} - ${quickOBAccount.accountName} updated to PKR ${Number(openingBalance).toLocaleString()} (${openingBalanceType}).`,
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({
+        type: 'error',
+        message: res.error || 'Failed to update opening balance.',
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+    }
   };
 
   const handleConfirmDelete = () => {
@@ -408,6 +604,63 @@ export const ChartOfAccountsView: React.FC = () => {
         </div>
       </div>
 
+      {/* Opening Balance Quick Overview Bar */}
+      <div className="bg-slate-950 border border-slate-800/90 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-inner">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 bg-cyan-950/80 border border-cyan-800/80 rounded-lg text-cyan-400">
+              <Scale className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                <span>Opening Balances (ابتدائی بیلنس) - FY {currentFiscalYear}</span>
+                <span
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                    batchStatus === 'Locked'
+                      ? 'bg-purple-950/90 text-purple-300 border-purple-800'
+                      : batchStatus === 'Posted'
+                      ? 'bg-emerald-950/90 text-emerald-300 border-emerald-800'
+                      : 'bg-amber-950/90 text-amber-300 border-amber-800'
+                  }`}
+                >
+                  {batchStatus}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                Double-Entry Audit Status: {isObBalanced ? 'Dr & Cr are in Equilibrium' : 'Difference detected'}
+              </div>
+            </div>
+          </div>
+
+          <div className="h-6 w-[1px] bg-slate-800 hidden sm:block"></div>
+
+          <div className="flex items-center gap-4 text-xs font-mono">
+            <div>
+              <span className="text-[10px] uppercase text-slate-500 mr-1 font-sans">Total Dr:</span>
+              <strong className="text-emerald-400">{formatPKR(totalOpeningDebit)}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase text-slate-500 mr-1 font-sans">Total Cr:</span>
+              <strong className="text-blue-400">{formatPKR(totalOpeningCredit)}</strong>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase text-slate-500 mr-1 font-sans">Diff:</span>
+              <strong className={isObBalanced ? 'text-slate-400' : 'text-red-400'}>
+                {formatPKR(Math.abs(obDiff))}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setActiveTab('opening-balances')}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-200 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer w-full md:w-auto justify-center"
+        >
+          <span>Batch Manager & Posting (مکمل نظام)</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
       {/* Filter & Search Bar */}
       <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
@@ -496,6 +749,7 @@ export const ChartOfAccountsView: React.FC = () => {
                     <th className="py-2.5 px-3">Account Title & Group</th>
                     <th className="py-2.5 px-3">Category</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-right">Opening Balance</th>
                     <th className="py-2.5 px-3 text-right">Balance</th>
                     <th className="py-2.5 px-3 text-right">Actions</th>
                   </tr>
@@ -504,6 +758,15 @@ export const ChartOfAccountsView: React.FC = () => {
                   {filteredAccounts.map((acc) => {
                     const isSelected = selectedAccountForLedger?.id === acc.id;
                     const isInactive = acc.status === 'Inactive';
+
+                    const obRecord = openingBalances.find(
+                      (b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear
+                    );
+                    const obAmount = obRecord ? Number(obRecord.amount) || 0 : Number(acc.openingBalance) || 0;
+                    const obType: BalanceType = obRecord
+                      ? obRecord.balanceType
+                      : acc.openingBalanceType ||
+                        (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
 
                     return (
                       <tr
@@ -555,11 +818,42 @@ export const ChartOfAccountsView: React.FC = () => {
                             {acc.status || 'Active'}
                           </span>
                         </td>
+                        <td className="py-2.5 px-3 text-right font-mono">
+                          {obAmount > 0 ? (
+                            <div className="flex items-center justify-end gap-1 font-bold">
+                              <span className={obType === 'Debit' ? 'text-emerald-400' : 'text-blue-400'}>
+                                {formatPKR(obAmount)}
+                              </span>
+                              <span
+                                className={`text-[9px] px-1 py-0.2 rounded font-black ${
+                                  obType === 'Debit'
+                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                                    : 'bg-blue-950 text-blue-300 border border-blue-800/60'
+                                }`}
+                              >
+                                {obType === 'Debit' ? 'Dr' : 'Cr'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-600 font-mono text-[11px]">-</span>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 text-right font-black font-mono text-slate-100">
                           {formatPKR(acc.currentBalance)}
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {/* Quick Opening Balance Button */}
+                            {canManageAccounts && (
+                              <button
+                                onClick={(e) => handleOpenQuickOBModal(acc, e)}
+                                className="p-1.5 text-cyan-400 hover:text-white rounded-lg hover:bg-cyan-950/80 border border-transparent hover:border-cyan-800 cursor-pointer transition-colors"
+                                title="Edit Opening Balance (Dr / Cr)"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             {/* Edit Button */}
                             {canManageAccounts && (
                               <button
@@ -600,7 +894,7 @@ export const ChartOfAccountsView: React.FC = () => {
                   })}
                   {filteredAccounts.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
+                      <td colSpan={7} className="py-8 text-center text-slate-500 text-xs">
                         No accounts found matching your filters.
                       </td>
                     </tr>
@@ -775,13 +1069,15 @@ export const ChartOfAccountsView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Opening Balance (PKR)</label>
-                  <input
-                    type="number"
-                    value={openingBalance}
-                    onChange={(e) => setOpeningBalance(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                  />
+                  <label className="block text-slate-400 font-semibold mb-1">Account Status</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as 'Active' | 'Inactive')}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-semibold"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
                 </div>
               </div>
 
@@ -797,28 +1093,73 @@ export const ChartOfAccountsView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Parent Group / Subcategory</label>
-                  <input
-                    type="text"
-                    value={subcategory}
-                    onChange={(e) => setSubcategory(e.target.value)}
-                    placeholder="e.g. Legal & Licensing"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
-                  />
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Parent Group / Subcategory</label>
+                <input
+                  type="text"
+                  value={subcategory}
+                  onChange={(e) => setSubcategory(e.target.value)}
+                  placeholder="e.g. Legal & Licensing"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                />
+              </div>
+
+              {/* Opening Balance Configuration */}
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                    <Scale className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Opening Balance (ابتدائی بیلنس) - FY {currentFiscalYear}</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">Optional</span>
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Account Status</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as 'Active' | 'Inactive')}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-semibold"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1 text-[11px]">Type (Dr / Cr) *</label>
+                    <select
+                      value={openingBalanceType}
+                      onChange={(e) => setOpeningBalanceType(e.target.value as BalanceType)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-bold"
+                    >
+                      <option value="Debit">Debit (بنام / Dr)</option>
+                      <option value="Credit">Credit (جمع / Cr)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1 text-[11px]">Amount (PKR)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={openingBalance}
+                      onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1 text-[11px]">Opening Date</label>
+                    <input
+                      type="date"
+                      value={openingBalanceDate}
+                      onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1 text-[11px]">Reference No.</label>
+                    <input
+                      type="text"
+                      value={openingBalanceRef}
+                      onChange={(e) => setOpeningBalanceRef(e.target.value)}
+                      placeholder="e.g. OB-0001"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono text-[11px]"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -932,6 +1273,103 @@ export const ChartOfAccountsView: React.FC = () => {
                   onChange={(e) => setSubcategory(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
                 />
+              </div>
+
+              {/* Opening Balance Configuration Block */}
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                    <Scale className="w-4 h-4 text-cyan-400" />
+                    <span>Opening Balance (ابتدائی بیلنس) - FY {currentFiscalYear}</span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      batchStatus === 'Locked'
+                        ? 'bg-purple-950 text-purple-300 border-purple-800'
+                        : batchStatus === 'Posted'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                        : 'bg-amber-950 text-amber-300 border-amber-800'
+                    }`}
+                  >
+                    {batchStatus}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Type (Dr / Cr) *</label>
+                    <select
+                      value={openingBalanceType}
+                      disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                      onChange={(e) => setOpeningBalanceType(e.target.value as BalanceType)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-bold disabled:opacity-50"
+                    >
+                      <option value="Debit">Debit (بنام / Dr)</option>
+                      <option value="Credit">Credit (جمع / Cr)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Amount (PKR) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                      value={openingBalance}
+                      onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono font-bold disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Opening Date</label>
+                    <input
+                      type="date"
+                      disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                      value={openingBalanceDate}
+                      onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Reference / Doc No</label>
+                    <input
+                      type="text"
+                      disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                      value={openingBalanceRef}
+                      onChange={(e) => setOpeningBalanceRef(e.target.value)}
+                      placeholder="e.g. OB-0001"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+
+                {batchStatus === 'Posted' && (
+                  <div>
+                    <label className="block text-amber-300 font-bold mb-1 flex items-center gap-1 text-[11px]">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Reason for Change (تبدیلی کی وجہ - لازمی) *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={openingBalanceReason}
+                      onChange={(e) => setOpeningBalanceReason(e.target.value)}
+                      placeholder="Reason for modifying posted opening balance audit trail..."
+                      className="w-full bg-amber-950/40 border border-amber-800 rounded-lg p-2 text-amber-200 placeholder:text-amber-600/70"
+                    />
+                  </div>
+                )}
+
+                {batchStatus === 'Locked' && !isSuperAdmin && (
+                  <div className="p-2 bg-purple-950/40 border border-purple-800/60 rounded-lg text-[10px] text-purple-300 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span>FY {currentFiscalYear} opening balances are locked. Only Super Admin can override.</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1049,6 +1487,177 @@ export const ChartOfAccountsView: React.FC = () => {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Quick Edit Opening Balance */}
+      {isQuickOBModalOpen && quickOBAccount && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-cyan-950/80 border border-cyan-800/80 rounded-xl text-cyan-400">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Quick Opening Balance (ابتدائی بیلنس)</h3>
+                  <p className="text-xs text-slate-400">Fiscal Year {currentFiscalYear}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsQuickOBModalOpen(false);
+                  setQuickOBAccount(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target Account Details */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Account:</span>
+                <span className="font-bold text-white">
+                  <span className="font-mono text-blue-400 mr-1.5">{quickOBAccount.accountCode}</span>
+                  {quickOBAccount.accountName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Category & Group:</span>
+                <span className="text-slate-300">
+                  {quickOBAccount.category} • {quickOBAccount.subcategory}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Batch Status:</span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    batchStatus === 'Locked'
+                      ? 'bg-purple-950 text-purple-300 border-purple-800'
+                      : batchStatus === 'Posted'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      : 'bg-amber-950 text-amber-300 border-amber-800'
+                  }`}
+                >
+                  {batchStatus}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveQuickOB} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Balance Type (Dr / Cr) *</label>
+                  <select
+                    value={openingBalanceType}
+                    disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                    onChange={(e) => setOpeningBalanceType(e.target.value as BalanceType)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-bold disabled:opacity-50"
+                  >
+                    <option value="Debit">Debit (بنام / Dr)</option>
+                    <option value="Credit">Credit (جمع / Cr)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Amount (PKR) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                    value={openingBalance}
+                    onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono font-bold disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Effective Date</label>
+                  <input
+                    type="date"
+                    disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                    value={openingBalanceDate}
+                    onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono disabled:opacity-50 text-[11px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Reference Doc No</label>
+                  <input
+                    type="text"
+                    disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                    value={openingBalanceRef}
+                    onChange={(e) => setOpeningBalanceRef(e.target.value)}
+                    placeholder="e.g. OB-0001"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono disabled:opacity-50 text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Notes / Ledger Remarks</label>
+                <input
+                  type="text"
+                  disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                  value={openingBalanceNotes}
+                  onChange={(e) => setOpeningBalanceNotes(e.target.value)}
+                  placeholder="e.g. Bank statement opening confirmation..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white disabled:opacity-50"
+                />
+              </div>
+
+              {batchStatus === 'Posted' && (
+                <div>
+                  <label className="block text-amber-300 font-bold mb-1 flex items-center gap-1 text-[11px]">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Reason for Change (تبدیلی کی وجہ - لازمی) *</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={openingBalanceReason}
+                    onChange={(e) => setOpeningBalanceReason(e.target.value)}
+                    placeholder="Provide justification for modifying posted opening balance..."
+                    className="w-full bg-amber-950/40 border border-amber-800 rounded-lg p-2 text-amber-200 placeholder:text-amber-600/70"
+                  />
+                </div>
+              )}
+
+              {batchStatus === 'Locked' && !isSuperAdmin && (
+                <div className="p-2.5 bg-purple-950/50 border border-purple-800/80 rounded-xl text-[11px] text-purple-300 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Fiscal Year {currentFiscalYear} opening balances are locked. Only Super Admin can modify.</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuickOBModalOpen(false);
+                    setQuickOBAccount(null);
+                  }}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={batchStatus === 'Locked' && !isSuperAdmin}
+                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save Opening Balance
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

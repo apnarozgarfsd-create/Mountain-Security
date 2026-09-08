@@ -289,6 +289,60 @@ export interface GuardIssuedItem {
 
 export type AccountCategory = 'Asset' | 'Liability' | 'Equity' | 'Income' | 'Expense';
 
+export type BalanceType = 'Debit' | 'Credit';
+
+export type OpeningBalanceStatus = 'Draft' | 'Posted' | 'Locked';
+
+export interface OpeningBalanceAudit {
+  id: string;
+  openingBalanceId?: string;
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  user: string;
+  timestamp: string;
+  oldAmount: number;
+  newAmount: number;
+  oldType: BalanceType;
+  newType: BalanceType;
+  reason: string;
+}
+
+export interface OpeningBalance {
+  id: string;
+  companyId?: string;
+  fiscalYear: string; // e.g. "2026-27"
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  category: AccountCategory;
+  openingDate: string; // e.g. "2026-07-01"
+  balanceType: BalanceType; // 'Debit' | 'Credit'
+  amount: number;
+  debit: number;
+  credit: number;
+  reference: string; // e.g. "OB-0001"
+  notes?: string;
+  status: OpeningBalanceStatus; // 'Draft' | 'Posted' | 'Locked'
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface FiscalYearOpeningBatch {
+  fiscalYear: string; // e.g. "2026-27"
+  startDate: string; // "2026-07-01"
+  endDate: string; // "2027-06-30"
+  status: OpeningBalanceStatus; // 'Draft' | 'Posted' | 'Locked'
+  voucherId?: string;
+  voucherNo?: string;
+  postedAt?: string;
+  postedBy?: string;
+  lockedAt?: string;
+  lockedBy?: string;
+}
+
 export interface Account {
   id: string;
   accountCode: string; // e.g. 1010, 1020, 4010, 5010
@@ -296,6 +350,7 @@ export interface Account {
   category: AccountCategory;
   subcategory: string;
   openingBalance: number;
+  openingBalanceType?: BalanceType;
   currentBalance: number;
   isSystem: boolean;
   status: 'Active' | 'Inactive';

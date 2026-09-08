@@ -10,6 +10,9 @@ import {
   initialGuardAssignments,
   initialGuardIssuedItems,
   initialGuards,
+  initialOpeningBalanceAudits,
+  initialOpeningBalances,
+  initialOpeningBatches,
   initialProducts,
   initialSalarySlips,
   initialSites,
@@ -29,6 +32,7 @@ import {
   AttendanceMonthlySummary,
   AttendanceStatus,
   AuditLog,
+  BalanceType,
   CashTransaction,
   Client,
   ClientInvoice,
@@ -39,6 +43,7 @@ import {
   ExpenseCategory,
   ExpenseSubcategory,
   FinanceAccount,
+  FiscalYearOpeningBatch,
   Guard,
   GuardAssignmentHistory,
   GuardAttendanceRecord,
@@ -47,6 +52,9 @@ import {
   InventorySubCategory,
   MergeConflictItem,
   MergePreviewSummary,
+  OpeningBalance,
+  OpeningBalanceAudit,
+  OpeningBalanceStatus,
   Party,
   Product,
   RoleSecuritySettings,
@@ -57,6 +65,7 @@ import {
   TransactionDirection,
   UserRole,
   Voucher,
+  VoucherEntry,
   Weapon,
   WeaponAssignmentHistory,
 } from '../types';
@@ -88,6 +97,29 @@ interface AppContextType {
   guardIssuedItems: GuardIssuedItem[];
   accounts: Account[];
   vouchers: Voucher[];
+  openingBalances: OpeningBalance[];
+  openingBalanceAudits: OpeningBalanceAudit[];
+  openingBatches: FiscalYearOpeningBatch[];
+  currentFiscalYear: string;
+  setCurrentFiscalYear: (fy: string) => void;
+  fiscalYears: string[];
+  getOpeningBalanceForAccount: (accountId: string, fiscalYear?: string) => OpeningBalance | undefined;
+  saveOpeningBalance: (data: {
+    accountId: string;
+    fiscalYear?: string;
+    balanceType: BalanceType;
+    amount: number;
+    openingDate?: string;
+    reference?: string;
+    notes?: string;
+    reason?: string;
+  }) => { success: boolean; error?: string };
+  clearOpeningBalance: (accountId: string, fiscalYear?: string, reason?: string) => { success: boolean; error?: string };
+  postOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string; voucher?: Voucher };
+  lockOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string };
+  unlockOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string };
+  carryForwardPreviousYear: (targetFiscalYear?: string) => { success: boolean; count?: number; error?: string };
+  getFiscalYearStatus: (fiscalYear?: string) => OpeningBalanceStatus;
   salarySlips: SalarySlip[];
   clientInvoices: ClientInvoice[];
   auditLogs: AuditLog[];
@@ -270,6 +302,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [guardIssuedItems, setGuardIssuedItems] = useState<GuardIssuedItem[]>(initialGuardIssuedItems);
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
   const [vouchers, setVouchers] = useState<Voucher[]>(initialVouchers);
+  const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>(initialOpeningBalances);
+  const [openingBalanceAudits, setOpeningBalanceAudits] = useState<OpeningBalanceAudit[]>(initialOpeningBalanceAudits);
+  const [openingBatches, setOpeningBatches] = useState<FiscalYearOpeningBatch[]>(initialOpeningBatches);
+  const [currentFiscalYear, setCurrentFiscalYear] = useState<string>('2026-27');
+  const fiscalYears = ['2026-27', '2025-26', '2027-28'];
   const [salarySlips, setSalarySlips] = useState<SalarySlip[]>(initialSalarySlips);
   const [clientInvoices, setClientInvoices] = useState<ClientInvoice[]>(initialClientInvoices);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
@@ -305,6 +342,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.guardIssuedItems) setGuardIssuedItems(parsed.guardIssuedItems);
         if (parsed.accounts) setAccounts(parsed.accounts);
         if (parsed.vouchers) setVouchers(parsed.vouchers);
+        if (parsed.openingBalances && Array.isArray(parsed.openingBalances) && parsed.openingBalances.length > 0) {
+          setOpeningBalances(parsed.openingBalances);
+        }
+        if (parsed.openingBalanceAudits && Array.isArray(parsed.openingBalanceAudits)) {
+          setOpeningBalanceAudits(parsed.openingBalanceAudits);
+        }
+        if (parsed.openingBatches && Array.isArray(parsed.openingBatches) && parsed.openingBatches.length > 0) {
+          setOpeningBatches(parsed.openingBatches);
+        }
+        if (parsed.currentFiscalYear) {
+          setCurrentFiscalYear(parsed.currentFiscalYear);
+        }
         if (parsed.salarySlips) setSalarySlips(parsed.salarySlips);
         if (parsed.clientInvoices) setClientInvoices(parsed.clientInvoices);
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
@@ -357,6 +406,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         guardIssuedItems,
         accounts,
         vouchers,
+        openingBalances,
+        openingBalanceAudits,
+        openingBatches,
+        currentFiscalYear,
         salarySlips,
         clientInvoices,
         auditLogs,
@@ -385,6 +438,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     guardIssuedItems,
     accounts,
     vouchers,
+    openingBalances,
+    openingBalanceAudits,
+    openingBatches,
+    currentFiscalYear,
     salarySlips,
     clientInvoices,
     auditLogs,
@@ -1418,6 +1475,597 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  // --- Opening Balance & Fiscal Year Operations ---
+  const getFiscalYearStatus = (fiscalYear: string = currentFiscalYear): OpeningBalanceStatus => {
+    const batch = openingBatches.find((b) => b.fiscalYear === fiscalYear);
+    return batch ? batch.status : 'Draft';
+  };
+
+  const getOpeningBalanceForAccount = (
+    accountId: string,
+    fiscalYear: string = currentFiscalYear
+  ): OpeningBalance | undefined => {
+    return openingBalances.find(
+      (ob) => ob.accountId === accountId && ob.fiscalYear === fiscalYear
+    );
+  };
+
+  const saveOpeningBalance = (data: {
+    accountId: string;
+    fiscalYear?: string;
+    balanceType: BalanceType;
+    amount: number;
+    openingDate?: string;
+    reference?: string;
+    notes?: string;
+    reason?: string;
+  }): { success: boolean; error?: string } => {
+    const fy = data.fiscalYear || currentFiscalYear;
+    const batch = openingBatches.find((b) => b.fiscalYear === fy);
+    const batchStatus = batch ? batch.status : 'Draft';
+
+    if (batchStatus === 'Locked' && currentUserRole !== 'Super Admin') {
+      return {
+        success: false,
+        error: `Opening balances for Fiscal Year ${fy} are locked. Only Super Admin can modify locked balances.`,
+      };
+    }
+
+    const acc = accounts.find((a) => a.id === data.accountId);
+    if (!acc) return { success: false, error: 'Account not found in Chart of Accounts.' };
+
+    const existingOb = openingBalances.find(
+      (ob) => ob.accountId === data.accountId && ob.fiscalYear === fy
+    );
+
+    const oldAmount = existingOb ? Number(existingOb.amount) || 0 : 0;
+    const oldType = existingOb ? existingOb.balanceType : (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+    const newAmount = Math.max(0, Number(data.amount) || 0);
+    const newType = data.balanceType;
+    const date = data.openingDate || (existingOb?.openingDate || (batch?.startDate || '2026-07-01'));
+    const ref = data.reference || (existingOb?.reference || (batch?.voucherNo || 'OB-0001'));
+
+    // If posted, requirement #7 specifies: require Reason for change
+    if (batchStatus === 'Posted' && !data.reason && (oldAmount !== newAmount || oldType !== newType)) {
+      return {
+        success: false,
+        error: 'A reason for change is required when updating a posted opening balance.',
+      };
+    }
+
+    // Maintain Audit Trail
+    if (oldAmount !== newAmount || oldType !== newType) {
+      const auditEntry: OpeningBalanceAudit = {
+        id: `AUD-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        openingBalanceId: existingOb?.id,
+        accountId: acc.id,
+        accountCode: acc.accountCode,
+        accountName: acc.accountName,
+        user: currentUserRole,
+        timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
+        oldAmount,
+        newAmount,
+        oldType,
+        newType,
+        reason: data.reason || (existingOb ? 'Updated opening balance' : 'Initial opening balance entry'),
+      };
+      setOpeningBalanceAudits((prev) => [auditEntry, ...prev]);
+    }
+
+    const updatedOb: OpeningBalance = {
+      id: existingOb ? existingOb.id : `OB-${fy}-${acc.accountCode}`,
+      fiscalYear: fy,
+      accountId: acc.id,
+      accountCode: acc.accountCode,
+      accountName: acc.accountName,
+      category: acc.category,
+      openingDate: date,
+      balanceType: newType,
+      amount: newAmount,
+      debit: newType === 'Debit' ? newAmount : 0,
+      credit: newType === 'Credit' ? newAmount : 0,
+      reference: ref,
+      notes: data.notes !== undefined ? data.notes : (existingOb?.notes || ''),
+      status: batchStatus,
+      createdBy: existingOb?.createdBy || currentUserRole,
+      createdAt: existingOb?.createdAt || new Date().toLocaleString('sv-SE').replace('T', ' '),
+      updatedBy: currentUserRole,
+      updatedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    setOpeningBalances((prev) => {
+      const filtered = prev.filter((b) => !(b.accountId === acc.id && b.fiscalYear === fy));
+      return [...filtered, updatedOb];
+    });
+
+    // Calculate effect on account balance
+    let oldEffect = 0;
+    if (existingOb) {
+      if (acc.category === 'Asset' || acc.category === 'Expense') {
+        oldEffect = oldType === 'Debit' ? oldAmount : -oldAmount;
+      } else {
+        oldEffect = oldType === 'Credit' ? oldAmount : -oldAmount;
+      }
+    }
+    let newEffect = 0;
+    if (acc.category === 'Asset' || acc.category === 'Expense') {
+      newEffect = newType === 'Debit' ? newAmount : -newAmount;
+    } else {
+      newEffect = newType === 'Credit' ? newAmount : -newAmount;
+    }
+    const balanceDelta = newEffect - oldEffect;
+
+    setAccounts((prev) =>
+      prev.map((a) => {
+        if (a.id === acc.id) {
+          return {
+            ...a,
+            openingBalance: newAmount,
+            openingBalanceType: newType,
+            currentBalance: a.currentBalance + (batchStatus === 'Posted' ? balanceDelta : 0),
+          };
+        }
+        return a;
+      })
+    );
+
+    // If batch was already 'Posted', update the existing opening voucher entry in place to avoid duplicate entries!
+    if (batchStatus === 'Posted') {
+      const voucherNo = batch?.voucherNo || 'OB-0001';
+      setVouchers((prev) =>
+        prev.map((v) => {
+          if (v.voucherNo === voucherNo || (v.referenceNo && v.referenceNo.includes(`OB-${fy}`))) {
+            const hasEntry = v.entries.some((e) => e.accountId === acc.id);
+            let updatedEntries = [];
+            if (hasEntry) {
+              updatedEntries = v.entries.map((e) => {
+                if (e.accountId === acc.id) {
+                  return {
+                    ...e,
+                    debit: newType === 'Debit' ? newAmount : 0,
+                    credit: newType === 'Credit' ? newAmount : 0,
+                    narration: `Opening Balance - ${acc.accountName}`,
+                  };
+                }
+                return e;
+              });
+            } else {
+              updatedEntries = [
+                ...v.entries,
+                {
+                  id: `VENT-OB-${Date.now()}`,
+                  accountId: acc.id,
+                  accountCode: acc.accountCode,
+                  accountName: acc.accountName,
+                  debit: newType === 'Debit' ? newAmount : 0,
+                  credit: newType === 'Credit' ? newAmount : 0,
+                  narration: `Opening Balance - ${acc.accountName}`,
+                },
+              ];
+            }
+            const totDebit = updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0);
+            const totCredit = updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0);
+            return {
+              ...v,
+              entries: updatedEntries,
+              totalDebit: totDebit,
+              totalCredit: totCredit,
+            };
+          }
+          return v;
+        })
+      );
+    }
+
+    logAudit(
+      batchStatus === 'Posted' ? 'Opening Balance Updated' : 'Opening Balance Saved',
+      'Chart of Accounts',
+      acc.accountCode,
+      `Opening balance for ${acc.accountCode} (${acc.accountName}) set to PKR ${newAmount.toLocaleString()} (${newType}). Fiscal Year: ${fy}.${data.reason ? ' Reason: ' + data.reason : ''}`
+    );
+
+    return { success: true };
+  };
+
+  const clearOpeningBalance = (
+    accountId: string,
+    fiscalYear: string = currentFiscalYear,
+    reason?: string
+  ): { success: boolean; error?: string } => {
+    const fy = fiscalYear;
+    const batch = openingBatches.find((b) => b.fiscalYear === fy);
+    const batchStatus = batch ? batch.status : 'Draft';
+
+    if (batchStatus === 'Locked' && currentUserRole !== 'Super Admin') {
+      return { success: false, error: 'Cannot clear locked opening balance. Only Super Admin can unlock.' };
+    }
+
+    const existingOb = openingBalances.find(
+      (ob) => ob.accountId === accountId && ob.fiscalYear === fy
+    );
+    if (!existingOb) return { success: true };
+
+    if (batchStatus === 'Posted' && !reason) {
+      return { success: false, error: 'A reason for change is required to clear a posted opening balance.' };
+    }
+
+    const acc = accounts.find((a) => a.id === accountId);
+    if (existingOb.amount > 0) {
+      setOpeningBalanceAudits((prev) => [
+        {
+          id: `AUD-OB-${Date.now()}`,
+          openingBalanceId: existingOb.id,
+          accountId,
+          accountCode: existingOb.accountCode,
+          accountName: existingOb.accountName,
+          user: currentUserRole,
+          timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
+          oldAmount: existingOb.amount,
+          newAmount: 0,
+          oldType: existingOb.balanceType,
+          newType: existingOb.balanceType,
+          reason: reason || 'Cleared opening balance',
+        },
+        ...prev,
+      ]);
+    }
+
+    setOpeningBalances((prev) =>
+      prev.filter((b) => !(b.accountId === accountId && b.fiscalYear === fy))
+    );
+
+    if (acc) {
+      let oldEffect = 0;
+      if (acc.category === 'Asset' || acc.category === 'Expense') {
+        oldEffect = existingOb.balanceType === 'Debit' ? existingOb.amount : -existingOb.amount;
+      } else {
+        oldEffect = existingOb.balanceType === 'Credit' ? existingOb.amount : -existingOb.amount;
+      }
+
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === accountId
+            ? {
+                ...a,
+                openingBalance: 0,
+                currentBalance: a.currentBalance - (batchStatus === 'Posted' ? oldEffect : 0),
+              }
+            : a
+        )
+      );
+
+      if (batchStatus === 'Posted') {
+        const voucherNo = batch?.voucherNo || 'OB-0001';
+        setVouchers((prev) =>
+          prev.map((v) => {
+            if (v.voucherNo === voucherNo) {
+              const updatedEntries = v.entries.filter((e) => e.accountId !== accountId);
+              return {
+                ...v,
+                entries: updatedEntries,
+                totalDebit: updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0),
+                totalCredit: updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0),
+              };
+            }
+            return v;
+          })
+        );
+      }
+    }
+
+    logAudit(
+      'Opening Balance Cleared',
+      'Chart of Accounts',
+      existingOb.accountCode,
+      `Cleared opening balance for ${existingOb.accountCode} (${existingOb.accountName}). Fiscal Year: ${fy}`
+    );
+
+    return { success: true };
+  };
+
+  const postOpeningBalances = (
+    fiscalYear: string = currentFiscalYear
+  ): { success: boolean; error?: string; voucher?: Voucher } => {
+    if (currentUserRole === 'Viewer' || currentUserRole === 'Site Supervisor') {
+      return {
+        success: false,
+        error: 'Permission denied. Only Accountants or Super Admins can post opening balances.',
+      };
+    }
+
+    const fy = fiscalYear;
+    const batch = openingBatches.find((b) => b.fiscalYear === fy);
+    if (batch?.status === 'Locked' && currentUserRole !== 'Super Admin') {
+      return {
+        success: false,
+        error: `Fiscal Year ${fy} opening balances are locked. Cannot repost.`,
+      };
+    }
+
+    const fyBalances = openingBalances.filter(
+      (ob) => ob.fiscalYear === fy && Number(ob.amount) > 0
+    );
+
+    if (fyBalances.length === 0) {
+      return {
+        success: false,
+        error: `No opening balance amounts entered for Fiscal Year ${fy}. Please enter account opening balances first.`,
+      };
+    }
+
+    const totalDebit = fyBalances.reduce(
+      (sum, b) => sum + (b.balanceType === 'Debit' ? Number(b.amount) || 0 : 0),
+      0
+    );
+    const totalCredit = fyBalances.reduce(
+      (sum, b) => sum + (b.balanceType === 'Credit' ? Number(b.amount) || 0 : 0),
+      0
+    );
+
+    // Strict Double-Entry validation
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      return {
+        success: false,
+        error: 'Opening balances are not balanced. Total Debit must equal Total Credit.',
+      };
+    }
+
+    const voucherNo = batch?.voucherNo || (fy === '2026-27' ? 'OB-0001' : `OB-${fy.replace(/[^0-9]/g, '').slice(0, 4)}-0001`);
+    const voucherDate = fyBalances[0]?.openingDate || (batch ? batch.startDate : '2026-07-01');
+
+    const entries: VoucherEntry[] = fyBalances.map((ob, idx) => ({
+      id: `VENT-OB-${fy}-${idx + 1}`,
+      accountId: ob.accountId,
+      accountCode: ob.accountCode,
+      accountName: ob.accountName,
+      debit: ob.balanceType === 'Debit' ? ob.amount : 0,
+      credit: ob.balanceType === 'Credit' ? ob.amount : 0,
+      narration: `Opening Balance - ${ob.accountName}`,
+    }));
+
+    const obVoucher: Voucher = {
+      id: batch?.voucherId || `VOUCH-OB-${fy}`,
+      voucherNo,
+      date: voucherDate,
+      voucherType: 'General',
+      referenceNo: `OB-${fy}`,
+      narration: `Opening Balance Journal Entry for Fiscal Year ${fy}`,
+      totalDebit,
+      totalCredit,
+      createdBy: currentUserRole,
+      status: 'Posted',
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+      entries,
+    };
+
+    setVouchers((prev) => {
+      const exists = prev.some((v) => v.voucherNo === voucherNo || v.id === obVoucher.id);
+      if (exists) {
+        return prev.map((v) => (v.voucherNo === voucherNo || v.id === obVoucher.id ? obVoucher : v));
+      }
+      return [obVoucher, ...prev];
+    });
+
+    setOpeningBalances((prev) =>
+      prev.map((b) => (b.fiscalYear === fy ? { ...b, status: 'Posted' } : b))
+    );
+
+    setOpeningBatches((prev) => {
+      const exists = prev.some((b) => b.fiscalYear === fy);
+      if (exists) {
+        return prev.map((b) =>
+          b.fiscalYear === fy
+            ? {
+                ...b,
+                status: 'Posted',
+                voucherId: obVoucher.id,
+                voucherNo: obVoucher.voucherNo,
+                postedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+                postedBy: currentUserRole,
+              }
+            : b
+        );
+      }
+      return [
+        ...prev,
+        {
+          fiscalYear: fy,
+          startDate: voucherDate,
+          endDate: `${parseInt(fy.slice(0, 4)) + 1}-06-30`,
+          status: 'Posted',
+          voucherId: obVoucher.id,
+          voucherNo: obVoucher.voucherNo,
+          postedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+          postedBy: currentUserRole,
+        },
+      ];
+    });
+
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        const matchingOb = fyBalances.find((b) => b.accountId === acc.id);
+        if (!matchingOb) return acc;
+        return {
+          ...acc,
+          openingBalance: matchingOb.amount,
+          openingBalanceType: matchingOb.balanceType,
+        };
+      })
+    );
+
+    logAudit(
+      'Opening Balances Posted',
+      'Finance & Accounts',
+      voucherNo,
+      `Successfully posted opening balances for Fiscal Year ${fy}. Total Debit: PKR ${totalDebit.toLocaleString()}, Total Credit: PKR ${totalCredit.toLocaleString()}. Journal entry ${voucherNo} generated.`
+    );
+
+    return { success: true, voucher: obVoucher };
+  };
+
+  const lockOpeningBalances = (
+    fiscalYear: string = currentFiscalYear
+  ): { success: boolean; error?: string } => {
+    if (currentUserRole === 'Viewer' || currentUserRole === 'Site Supervisor') {
+      return { success: false, error: 'Permission denied. Only Accountants or Super Admins can lock opening balances.' };
+    }
+    const fy = fiscalYear;
+    const batch = openingBatches.find((b) => b.fiscalYear === fy);
+    if (!batch || batch.status === 'Draft') {
+      return { success: false, error: 'Opening balances must be posted before they can be locked.' };
+    }
+
+    setOpeningBatches((prev) =>
+      prev.map((b) =>
+        b.fiscalYear === fy
+          ? {
+              ...b,
+              status: 'Locked',
+              lockedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+              lockedBy: currentUserRole,
+            }
+          : b
+      )
+    );
+
+    setOpeningBalances((prev) =>
+      prev.map((b) => (b.fiscalYear === fy ? { ...b, status: 'Locked' } : b))
+    );
+
+    logAudit(
+      'Opening Balances Locked',
+      'Finance & Accounts',
+      `OB-${fy}`,
+      `Locked opening balances for Fiscal Year ${fy}. Normal users can no longer edit these balances.`
+    );
+
+    return { success: true };
+  };
+
+  const unlockOpeningBalances = (
+    fiscalYear: string = currentFiscalYear
+  ): { success: boolean; error?: string } => {
+    if (currentUserRole !== 'Super Admin') {
+      return {
+        success: false,
+        error: 'Permission denied. Only Super Admin has authorization to unlock locked opening balances.',
+      };
+    }
+    const fy = fiscalYear;
+    setOpeningBatches((prev) =>
+      prev.map((b) =>
+        b.fiscalYear === fy
+          ? {
+              ...b,
+              status: 'Posted',
+              lockedAt: undefined,
+              lockedBy: undefined,
+            }
+          : b
+      )
+    );
+
+    setOpeningBalances((prev) =>
+      prev.map((b) => (b.fiscalYear === fy ? { ...b, status: 'Posted' } : b))
+    );
+
+    logAudit(
+      'Opening Balances Unlocked',
+      'Finance & Accounts',
+      `OB-${fy}`,
+      `Super Admin unlocked opening balances for Fiscal Year ${fy}. Balances are now open for supervised adjustments.`
+    );
+
+    return { success: true };
+  };
+
+  const carryForwardPreviousYear = (
+    targetFiscalYear: string = currentFiscalYear
+  ): { success: boolean; count?: number; error?: string } => {
+    if (currentUserRole === 'Viewer' || currentUserRole === 'Site Supervisor') {
+      return { success: false, error: 'Permission denied.' };
+    }
+    const batch = openingBatches.find((b) => b.fiscalYear === targetFiscalYear);
+    if (batch?.status === 'Locked' && currentUserRole !== 'Super Admin') {
+      return { success: false, error: `Fiscal Year ${targetFiscalYear} is locked. Cannot carry forward.` };
+    }
+
+    const targetStartYear = targetFiscalYear.split('-')[0] || '2027';
+    const targetDate = `${targetStartYear}-07-01`;
+
+    let carriedCount = 0;
+    const newOpeningBalances: OpeningBalance[] = [];
+
+    accounts.forEach((acc) => {
+      const balance = acc.currentBalance;
+      if (balance !== 0) {
+        let bType: BalanceType = 'Debit';
+        if (acc.category === 'Asset' || acc.category === 'Expense') {
+          bType = balance >= 0 ? 'Debit' : 'Credit';
+        } else {
+          bType = balance >= 0 ? 'Credit' : 'Debit';
+        }
+
+        const absAmount = Math.abs(balance);
+        newOpeningBalances.push({
+          id: `OB-${targetFiscalYear}-${acc.accountCode}`,
+          fiscalYear: targetFiscalYear,
+          accountId: acc.id,
+          accountCode: acc.accountCode,
+          accountName: acc.accountName,
+          category: acc.category,
+          openingDate: targetDate,
+          balanceType: bType,
+          amount: absAmount,
+          debit: bType === 'Debit' ? absAmount : 0,
+          credit: bType === 'Credit' ? absAmount : 0,
+          reference: `CF-${targetFiscalYear}`,
+          notes: `Carried forward closing balance from previous financial year.`,
+          status: 'Draft',
+          createdBy: currentUserRole,
+          createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+        });
+        carriedCount++;
+      }
+    });
+
+    setOpeningBalances((prev) => {
+      const otherYears = prev.filter((b) => b.fiscalYear !== targetFiscalYear);
+      return [...otherYears, ...newOpeningBalances];
+    });
+
+    setOpeningBatches((prev) => {
+      const exists = prev.some((b) => b.fiscalYear === targetFiscalYear);
+      if (exists) {
+        return prev.map((b) =>
+          b.fiscalYear === targetFiscalYear && b.status === 'Locked'
+            ? b
+            : b.fiscalYear === targetFiscalYear
+            ? { ...b, status: 'Draft' }
+            : b
+        );
+      }
+      return [
+        ...prev,
+        {
+          fiscalYear: targetFiscalYear,
+          startDate: targetDate,
+          endDate: `${parseInt(targetStartYear) + 1}-06-30`,
+          status: 'Draft',
+        },
+      ];
+    });
+
+    logAudit(
+      'Opening Balances Carried Forward',
+      'Finance & Accounts',
+      targetFiscalYear,
+      `Carried forward closing balances for ${carriedCount} accounts into Fiscal Year ${targetFiscalYear} as Draft opening balances.`
+    );
+
+    return { success: true, count: carriedCount };
+  };
+
   const createVoucher = (
     voucherData: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'>
   ): { success: boolean; error?: string; voucher?: Voucher } => {
@@ -2324,6 +2972,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGuardIssuedItems(parsed.guardIssuedItems || []);
         setAccounts(parsed.accounts || []);
         setVouchers(parsed.vouchers || []);
+        if (parsed.openingBalances && Array.isArray(parsed.openingBalances)) {
+          setOpeningBalances(parsed.openingBalances);
+        }
+        if (parsed.openingBatches && Array.isArray(parsed.openingBatches)) {
+          setOpeningBatches(parsed.openingBatches);
+        }
+        if (parsed.openingBalanceAudits && Array.isArray(parsed.openingBalanceAudits)) {
+          setOpeningBalanceAudits(parsed.openingBalanceAudits);
+        }
         setSalarySlips(parsed.salarySlips || []);
         setClientInvoices(parsed.clientInvoices || []);
         setAuditLogs(parsed.auditLogs || []);
@@ -2355,6 +3012,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGuardIssuedItems(initialGuardIssuedItems);
     setAccounts(initialAccounts);
     setVouchers(initialVouchers);
+    setOpeningBalances(initialOpeningBalances);
+    setOpeningBatches(initialOpeningBatches);
+    setOpeningBalanceAudits(initialOpeningBalanceAudits);
+    setCurrentFiscalYear('2026-27');
     setSalarySlips(initialSalarySlips);
     setClientInvoices(initialClientInvoices);
     setAuditLogs(initialAuditLogs);
@@ -2801,6 +3462,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       guardIssuedItems,
       accounts,
       vouchers,
+      openingBalances,
+      openingBatches,
+      openingBalanceAudits,
+      currentFiscalYear,
       salarySlips,
       clientInvoices,
       auditLogs,
@@ -2852,6 +3517,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         guardIssuedItems,
         accounts,
         vouchers,
+        openingBalances,
+        openingBalanceAudits,
+        openingBatches,
+        currentFiscalYear,
+        setCurrentFiscalYear,
+        fiscalYears,
+        getOpeningBalanceForAccount,
+        saveOpeningBalance,
+        clearOpeningBalance,
+        postOpeningBalances,
+        lockOpeningBalances,
+        unlockOpeningBalances,
+        carryForwardPreviousYear,
+        getFiscalYearStatus,
         salarySlips,
         clientInvoices,
         auditLogs,

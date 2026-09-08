@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Award,
+  BookOpen,
   Building,
   CheckCircle,
   Clock,
@@ -9,6 +10,8 @@ import {
   FileText,
   PieChart,
   Printer,
+  Scale,
+  Search,
   Shield,
   TrendingUp,
   Users,
@@ -17,6 +20,7 @@ import {
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../utils/formatters';
+import { BalanceType } from '../../types';
 
 export const ReportsView: React.FC = () => {
   const {
@@ -30,11 +34,18 @@ export const ReportsView: React.FC = () => {
     salarySlips,
     triggerPrint,
     companySettings,
+    openingBalances,
+    openingBatches,
+    currentFiscalYear,
   } = useApp();
 
   const [activeReportTab, setActiveReportTab] = useState<
-    'pnl' | 'balance-sheet' | 'trial-balance' | 'receivables' | 'site-deployment' | 'armoury-status' | 'inventory-audit'
+    'pnl' | 'balance-sheet' | 'trial-balance' | 'ledger' | 'receivables' | 'site-deployment' | 'armoury-status' | 'inventory-audit'
   >('pnl');
+
+  const [tbViewMode, setTbViewMode] = useState<'extended' | 'summary'>('extended');
+  const [selectedLedgerAccountId, setSelectedLedgerAccountId] = useState<string>(accounts[0]?.id || '');
+  const [ledgerSearchTerm, setLedgerSearchTerm] = useState<string>('');
 
   // Profit & Loss Math
   const incomeAccounts = accounts.filter((a) => a.category === 'Income');
@@ -122,8 +133,20 @@ export const ReportsView: React.FC = () => {
               : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
           }`}
         >
-          <PieChart className="w-4 h-4" />
-          <span>Trial Balance</span>
+          <Scale className="w-4 h-4" />
+          <span>Trial Balance (میزان پڑتال)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveReportTab('ledger')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center gap-2 ${
+            activeReportTab === 'ledger'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>General Ledger (کھاتہ)</span>
         </button>
 
         <button
@@ -381,48 +404,538 @@ export const ReportsView: React.FC = () => {
       )}
 
       {/* TAB 3: TRIAL BALANCE */}
-      {activeReportTab === 'trial-balance' && (
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-          <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-lg font-black text-white uppercase font-display">
-              Unadjusted Trial Balance
-            </h2>
-            <p className="text-xs text-slate-400">All chart of account ledger balances verified equal.</p>
-          </div>
+      {activeReportTab === 'trial-balance' && (() => {
+        const currentBatch = openingBatches.find((b) => b.fiscalYear === currentFiscalYear);
+        const batchStatus = currentBatch ? currentBatch.status : 'Draft';
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-bold">
-                  <th className="py-2.5 px-4">Account Code</th>
-                  <th className="py-2.5 px-4">Account Title</th>
-                  <th className="py-2.5 px-4">Type</th>
-                  <th className="py-2.5 px-4 text-right">Debit Balance (PKR)</th>
-                  <th className="py-2.5 px-4 text-right">Credit Balance (PKR)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
-                {accounts.map((acc) => {
-                  const isDebitNature = acc.category === 'Asset' || acc.category === 'Expense';
-                  return (
-                    <tr key={acc.id} className="hover:bg-slate-900/60">
-                      <td className="py-2.5 px-4 font-bold text-blue-400">{acc.accountCode}</td>
-                      <td className="py-2.5 px-4 font-sans font-medium text-slate-200">{acc.accountName}</td>
-                      <td className="py-2.5 px-4 font-sans text-slate-400">{acc.category}</td>
-                      <td className="py-2.5 px-4 text-right text-emerald-400">
-                        {isDebitNature ? acc.currentBalance.toLocaleString() : '-'}
+        const trialBalanceRows = accounts.map((acc) => {
+          const obRecord = openingBalances.find(
+            (b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear
+          );
+          const obAmount = obRecord ? Number(obRecord.amount) || 0 : Number(acc.openingBalance) || 0;
+          const obType: BalanceType = obRecord
+            ? obRecord.balanceType
+            : acc.openingBalanceType ||
+              (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
+
+          const openingDr = obType === 'Debit' ? obAmount : 0;
+          const openingCr = obType === 'Credit' ? obAmount : 0;
+
+          let periodDr = 0;
+          let periodCr = 0;
+          vouchers.forEach((v) => {
+            if (v.voucherNo === `JV-OB-${currentFiscalYear}`) return;
+            v.entries.forEach((e) => {
+              if (e.accountId === acc.id) {
+                periodDr += Number(e.debit) || 0;
+                periodCr += Number(e.credit) || 0;
+              }
+            });
+          });
+
+          const totalDr = openingDr + periodDr;
+          const totalCr = openingCr + periodCr;
+
+          let closingDr = 0;
+          let closingCr = 0;
+          if (totalDr >= totalCr) {
+            closingDr = totalDr - totalCr;
+          } else {
+            closingCr = totalCr - totalDr;
+          }
+
+          return {
+            account: acc,
+            openingDr,
+            openingCr,
+            periodDr,
+            periodCr,
+            closingDr,
+            closingCr,
+            totalDr,
+            totalCr,
+          };
+        });
+
+        const totalOpeningDr = trialBalanceRows.reduce((sum, r) => sum + r.openingDr, 0);
+        const totalOpeningCr = trialBalanceRows.reduce((sum, r) => sum + r.openingCr, 0);
+        const totalPeriodDr = trialBalanceRows.reduce((sum, r) => sum + r.periodDr, 0);
+        const totalPeriodCr = trialBalanceRows.reduce((sum, r) => sum + r.periodCr, 0);
+        const totalClosingDr = trialBalanceRows.reduce((sum, r) => sum + r.closingDr, 0);
+        const totalClosingCr = trialBalanceRows.reduce((sum, r) => sum + r.closingCr, 0);
+
+        const isOpeningBalanced = Math.abs(totalOpeningDr - totalOpeningCr) < 0.01;
+        const isPeriodBalanced = Math.abs(totalPeriodDr - totalPeriodCr) < 0.01;
+        const isClosingBalanced = Math.abs(totalClosingDr - totalClosingCr) < 0.01;
+
+        return (
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            {/* Header with Batch and View Mode */}
+            <div className="border-b border-slate-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-white uppercase font-display">
+                    Trial Balance (میزان پڑتال)
+                  </h2>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      batchStatus === 'Locked'
+                        ? 'bg-purple-950 text-purple-300 border-purple-800'
+                        : batchStatus === 'Posted'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                        : 'bg-amber-950 text-amber-300 border-amber-800'
+                    }`}
+                  >
+                    FY {currentFiscalYear} • {batchStatus}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Reconciled statement incorporating Opening Balances and Period Journal Vouchers.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTbViewMode('extended')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    tbViewMode === 'extended'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  6-Column Extended
+                </button>
+                <button
+                  onClick={() => setTbViewMode('summary')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    tbViewMode === 'summary'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  Net Closing Summary
+                </button>
+              </div>
+            </div>
+
+            {/* Reconciliation KPI Strip */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="font-bold text-slate-400 uppercase">1. Opening Balances</span>
+                  <span className={`text-[10px] font-black ${isOpeningBalanced ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isOpeningBalanced ? '✓ Reconciled' : '✗ Difference'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-mono text-xs">
+                  <span className="text-emerald-400">Dr: {formatPKR(totalOpeningDr)}</span>
+                  <span className="text-blue-400">Cr: {formatPKR(totalOpeningCr)}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="font-bold text-slate-400 uppercase">2. Period Movement</span>
+                  <span className={`text-[10px] font-black ${isPeriodBalanced ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isPeriodBalanced ? '✓ Reconciled' : '✗ Difference'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-mono text-xs">
+                  <span className="text-emerald-400">Dr: {formatPKR(totalPeriodDr)}</span>
+                  <span className="text-blue-400">Cr: {formatPKR(totalPeriodCr)}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="font-bold text-slate-400 uppercase">3. Closing Balances</span>
+                  <span className={`text-[10px] font-black ${isClosingBalanced ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isClosingBalanced ? '✓ Balanced' : '✗ Difference'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-mono text-xs">
+                  <span className="text-emerald-400 font-bold">Dr: {formatPKR(totalClosingDr)}</span>
+                  <span className="text-blue-400 font-bold">Cr: {formatPKR(totalClosingCr)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Trial Balance Table */}
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  {tbViewMode === 'extended' ? (
+                    <>
+                      <tr className="bg-slate-900 text-slate-300 uppercase text-[10px] font-black tracking-wider border-b border-slate-800 text-center">
+                        <th colSpan={3} className="py-2 px-3 text-left border-r border-slate-800">
+                          Account Information
+                        </th>
+                        <th colSpan={2} className="py-2 px-3 border-r border-slate-800 bg-cyan-950/40 text-cyan-300">
+                          Opening Balance (ابتدائی)
+                        </th>
+                        <th colSpan={2} className="py-2 px-3 border-r border-slate-800 bg-slate-900/80 text-slate-300">
+                          Period Transactions (گردش)
+                        </th>
+                        <th colSpan={2} className="py-2 px-3 bg-emerald-950/30 text-emerald-300">
+                          Net Closing Balance (اختتامی)
+                        </th>
+                      </tr>
+                      <tr className="bg-slate-900/90 text-slate-400 uppercase text-[9px] tracking-wider border-b border-slate-800 font-bold">
+                        <th className="py-2 px-3">Code</th>
+                        <th className="py-2 px-3">Title & Group</th>
+                        <th className="py-2 px-3 border-r border-slate-800">Category</th>
+                        <th className="py-2 px-3 text-right bg-cyan-950/20 text-emerald-400">Dr (PKR)</th>
+                        <th className="py-2 px-3 text-right border-r border-slate-800 bg-cyan-950/20 text-blue-400">Cr (PKR)</th>
+                        <th className="py-2 px-3 text-right text-emerald-400">Dr (PKR)</th>
+                        <th className="py-2 px-3 text-right border-r border-slate-800 text-blue-400">Cr (PKR)</th>
+                        <th className="py-2 px-3 text-right bg-emerald-950/20 text-emerald-400 font-black">Dr (PKR)</th>
+                        <th className="py-2 px-3 text-right bg-emerald-950/20 text-blue-400 font-black">Cr (PKR)</th>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-bold">
+                      <th className="py-2.5 px-4">Account Code</th>
+                      <th className="py-2.5 px-4">Account Title & Group</th>
+                      <th className="py-2.5 px-4">Category</th>
+                      <th className="py-2.5 px-4 text-right">Opening Balance</th>
+                      <th className="py-2.5 px-4 text-right text-emerald-400">Closing Debit (PKR)</th>
+                      <th className="py-2.5 px-4 text-right text-blue-400">Closing Credit (PKR)</th>
+                    </tr>
+                  )}
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {trialBalanceRows.map((r) => {
+                    return tbViewMode === 'extended' ? (
+                      <tr key={r.account.id} className="hover:bg-slate-900/60 transition-colors">
+                        <td className="py-2 px-3 font-bold text-blue-400">{r.account.accountCode}</td>
+                        <td className="py-2 px-3 font-sans font-medium text-slate-200">
+                          <div>{r.account.accountName}</div>
+                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory}</div>
+                        </td>
+                        <td className="py-2 px-3 font-sans text-slate-400 border-r border-slate-800">
+                          <span className="text-[9px] px-1.5 py-0.2 bg-slate-900 border border-slate-700/60 rounded">
+                            {r.account.category}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right bg-cyan-950/10 text-emerald-300">
+                          {r.openingDr > 0 ? r.openingDr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right border-r border-slate-800 bg-cyan-950/10 text-blue-300">
+                          {r.openingCr > 0 ? r.openingCr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right text-emerald-300">
+                          {r.periodDr > 0 ? r.periodDr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right border-r border-slate-800 text-blue-300">
+                          {r.periodCr > 0 ? r.periodCr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right bg-emerald-950/20 font-bold text-emerald-400">
+                          {r.closingDr > 0 ? r.closingDr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right bg-emerald-950/20 font-bold text-blue-400">
+                          {r.closingCr > 0 ? r.closingCr.toLocaleString() : '-'}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={r.account.id} className="hover:bg-slate-900/60 transition-colors">
+                        <td className="py-2.5 px-4 font-bold text-blue-400">{r.account.accountCode}</td>
+                        <td className="py-2.5 px-4 font-sans font-medium text-slate-200">
+                          <div>{r.account.accountName}</div>
+                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory}</div>
+                        </td>
+                        <td className="py-2.5 px-4 font-sans text-slate-400">
+                          <span className="text-[10px] px-2 py-0.5 bg-slate-900 border border-slate-800 rounded">
+                            {r.account.category}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          {r.openingDr > 0 ? (
+                            <span className="text-emerald-400 font-bold">{r.openingDr.toLocaleString()} Dr</span>
+                          ) : r.openingCr > 0 ? (
+                            <span className="text-blue-400 font-bold">{r.openingCr.toLocaleString()} Cr</span>
+                          ) : (
+                            <span className="text-slate-600">-</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-right font-bold text-emerald-400">
+                          {r.closingDr > 0 ? r.closingDr.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2.5 px-4 text-right font-bold text-blue-400">
+                          {r.closingCr > 0 ? r.closingCr.toLocaleString() : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  {tbViewMode === 'extended' ? (
+                    <tr className="bg-slate-900/90 font-mono font-bold text-xs border-t-2 border-slate-700">
+                      <td colSpan={3} className="py-3 px-3 uppercase text-slate-300 font-sans text-right border-r border-slate-800">
+                        Total Double-Entry Balances:
                       </td>
-                      <td className="py-2.5 px-4 text-right text-blue-400">
-                        {!isDebitNature ? acc.currentBalance.toLocaleString() : '-'}
+                      <td className="py-3 px-3 text-right text-emerald-400 bg-cyan-950/30 font-black">
+                        {formatPKR(totalOpeningDr)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-blue-400 border-r border-slate-800 bg-cyan-950/30 font-black">
+                        {formatPKR(totalOpeningCr)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-emerald-400 font-black">
+                        {formatPKR(totalPeriodDr)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-blue-400 border-r border-slate-800 font-black">
+                        {formatPKR(totalPeriodCr)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-emerald-400 bg-emerald-950/40 font-black text-sm">
+                        {formatPKR(totalClosingDr)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-blue-400 bg-emerald-950/40 font-black text-sm">
+                        {formatPKR(totalClosingCr)}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : (
+                    <tr className="bg-slate-900/90 font-mono font-bold text-xs border-t-2 border-slate-700">
+                      <td colSpan={4} className="py-3 px-4 uppercase text-slate-300 font-sans text-right">
+                        Total Reconciled Trial Balance:
+                      </td>
+                      <td className="py-3 px-4 text-right text-emerald-400 font-black text-sm">
+                        {formatPKR(totalClosingDr)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-blue-400 font-black text-sm">
+                        {formatPKR(totalClosingCr)}
+                      </td>
+                    </tr>
+                  )}
+                </tfoot>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* TAB: GENERAL ACCOUNT LEDGER */}
+      {activeReportTab === 'ledger' && (() => {
+        const selectedLedgerAccount =
+          accounts.find((a) => a.id === selectedLedgerAccountId) || accounts[0];
+
+        const currentBatch = openingBatches.find((b) => b.fiscalYear === currentFiscalYear);
+        const batchStatus = currentBatch ? currentBatch.status : 'Draft';
+
+        const obRecord = openingBalances.find(
+          (b) => b.accountId === selectedLedgerAccount?.id && b.fiscalYear === currentFiscalYear
+        );
+        const obAmount = obRecord
+          ? Number(obRecord.amount) || 0
+          : Number(selectedLedgerAccount?.openingBalance) || 0;
+        const obType: BalanceType = obRecord
+          ? obRecord.balanceType
+          : selectedLedgerAccount?.openingBalanceType ||
+            (selectedLedgerAccount?.category === 'Asset' || selectedLedgerAccount?.category === 'Expense' ? 'Debit' : 'Credit');
+
+        const isNormalDebit =
+          selectedLedgerAccount?.category === 'Asset' || selectedLedgerAccount?.category === 'Expense';
+
+        let runningLedgerBal = isNormalDebit
+          ? obType === 'Debit' ? obAmount : -obAmount
+          : obType === 'Credit' ? obAmount : -obAmount;
+
+        const ledgerTransactions: Array<{
+          id: string;
+          date: string;
+          voucherNo: string;
+          narration: string;
+          debit: number;
+          credit: number;
+          balance: number;
+          isOpening?: boolean;
+        }> = [];
+
+        // Row 1: Opening Balance
+        ledgerTransactions.push({
+          id: 'OB-ROW',
+          date: obRecord?.openingDate || `${currentFiscalYear.split('-')[0]}-07-01`,
+          voucherNo: obRecord?.reference || `OB-${currentFiscalYear}`,
+          narration: `Opening Balance (ابتدائی بیلنس) - FY ${currentFiscalYear} [Batch: ${batchStatus}]`,
+          debit: obType === 'Debit' ? obAmount : 0,
+          credit: obType === 'Credit' ? obAmount : 0,
+          balance: runningLedgerBal,
+          isOpening: true,
+        });
+
+        // Transactions from vouchers (excluding auto OB voucher)
+        vouchers.forEach((v) => {
+          if (v.voucherNo === `JV-OB-${currentFiscalYear}`) return;
+          v.entries.forEach((e, idx) => {
+            if (e.accountId === selectedLedgerAccount?.id) {
+              const d = Number(e.debit) || 0;
+              const c = Number(e.credit) || 0;
+              if (isNormalDebit) {
+                runningLedgerBal = runningLedgerBal + d - c;
+              } else {
+                runningLedgerBal = runningLedgerBal + c - d;
+              }
+              ledgerTransactions.push({
+                id: `${v.id}-${idx}`,
+                date: v.date,
+                voucherNo: v.voucherNo,
+                narration: e.narration || v.narration,
+                debit: d,
+                credit: c,
+                balance: runningLedgerBal,
+              });
+            }
+          });
+        });
+
+        const totalDebitLedger = ledgerTransactions.reduce((sum, r) => sum + r.debit, 0);
+        const totalCreditLedger = ledgerTransactions.reduce((sum, r) => sum + r.credit, 0);
+
+        const filteredAccountsForSelect = accounts.filter(
+          (a) =>
+            a.accountName.toLowerCase().includes(ledgerSearchTerm.toLowerCase()) ||
+            a.accountCode.includes(ledgerSearchTerm) ||
+            a.subcategory.toLowerCase().includes(ledgerSearchTerm.toLowerCase())
+        );
+
+        return (
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            <div className="border-b border-slate-800 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-white uppercase font-display flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-blue-400" />
+                  <span>General Account Ledger (کھاتہ برائے لیجر)</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Full transactional ledger with Opening Balance row and live running balance calculation.
+                </p>
+              </div>
+
+              {/* Account Selector */}
+              <div className="flex items-center gap-2">
+                <div className="relative w-72">
+                  <select
+                    value={selectedLedgerAccountId}
+                    onChange={(e) => setSelectedLedgerAccountId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold cursor-pointer"
+                  >
+                    {filteredAccountsForSelect.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.accountCode} - {acc.accountName} ({acc.category})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Account Summary Banner */}
+            {selectedLedgerAccount && (
+              <div className="bg-slate-900/70 border border-slate-800 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-blue-400 font-black text-sm">
+                      {selectedLedgerAccount.accountCode}
+                    </span>
+                    <span className="text-white font-bold text-sm">{selectedLedgerAccount.accountName}</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded uppercase font-bold">
+                      {selectedLedgerAccount.category} • {selectedLedgerAccount.subcategory}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1 flex items-center gap-3">
+                    <span>
+                      Opening Balance:{' '}
+                      <strong className={obType === 'Debit' ? 'text-emerald-400' : 'text-blue-400'}>
+                        {formatPKR(obAmount)} ({obType})
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span>FY: <strong>{currentFiscalYear}</strong></span>
+                    <span>•</span>
+                    <span>Batch: <strong>{batchStatus}</strong></span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[11px] text-slate-400">Current Ledger Balance:</span>
+                  <div className="text-xl font-black text-emerald-400 font-mono">
+                    {formatPKR(runningLedgerBal)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Ledger Transactions Table */}
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-bold">
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Voucher / Ref</th>
+                    <th className="py-2.5 px-3">Narration / Particulars</th>
+                    <th className="py-2.5 px-3 text-right text-emerald-400">Debit (PKR)</th>
+                    <th className="py-2.5 px-3 text-right text-blue-400">Credit (PKR)</th>
+                    <th className="py-2.5 px-3 text-right text-white">Running Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {ledgerTransactions.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={
+                        row.isOpening
+                          ? 'bg-cyan-950/20 font-bold'
+                          : 'hover:bg-slate-900/60 transition-colors'
+                      }
+                    >
+                      <td className="py-2.5 px-3 text-slate-300">{row.date}</td>
+                      <td className="py-2.5 px-3 text-blue-400 font-bold">
+                        {row.voucherNo}
+                        {row.isOpening && (
+                          <span className="ml-1.5 text-[9px] px-1.5 py-0.2 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded font-sans">
+                            OB
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans text-slate-200">{row.narration}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-400">
+                        {row.debit > 0 ? row.debit.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-blue-400">
+                        {row.credit > 0 ? row.credit.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-black text-slate-100">
+                        {formatPKR(row.balance)}
+                      </td>
+                    </tr>
+                  ))}
+                  {ledgerTransactions.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-500 font-sans">
+                        No transactions found for this account.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-900/90 font-mono font-bold text-xs border-t-2 border-slate-700">
+                    <td colSpan={3} className="py-3 px-3 uppercase text-slate-300 font-sans text-right">
+                      Totals / Closing Position:
+                    </td>
+                    <td className="py-3 px-3 text-right text-emerald-400 font-black">
+                      {formatPKR(totalDebitLedger)}
+                    </td>
+                    <td className="py-3 px-3 text-right text-blue-400 font-black">
+                      {formatPKR(totalCreditLedger)}
+                    </td>
+                    <td className="py-3 px-3 text-right text-emerald-400 font-black text-sm">
+                      {formatPKR(runningLedgerBal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TAB 4: CLIENT RECEIVABLES */}
       {activeReportTab === 'receivables' && (

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChartOfAccountsView } from './components/accounting/ChartOfAccountsView';
+import { OpeningBalancesView } from './components/accounting/OpeningBalancesView';
 import { SalarySlipsView } from './components/accounting/SalarySlipsView';
 import { VouchersView } from './components/accounting/VouchersView';
 import { AttendanceMasterView } from './components/attendance/AttendanceMasterView';
@@ -71,6 +72,9 @@ const AppContent: React.FC = () => {
         return <VouchersView />;
       case 'chart-of-accounts':
         return <ChartOfAccountsView />;
+      case 'opening-balances':
+      case 'opening-balance':
+        return <OpeningBalancesView />;
       case 'financial-reports':
       case 'reports':
         return <ReportsView />;
