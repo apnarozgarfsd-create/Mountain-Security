@@ -268,6 +268,7 @@ interface AppContextType {
   getDataSummaryCounts: () => DataSummaryCounts;
   resetToCleanInitialDataset: () => void;
   deleteAllOperationalData: () => void;
+  resetSystemDataToZero: () => { success: boolean; backupJson: string };
   previewMergeBackupJson: (jsonString: string) => MergePreviewSummary | null;
   executeMergeBackup: (jsonString: string, conflictResolutions?: Record<string, 'keep_existing' | 'use_incoming'>) => { newRecordsCount: number; duplicateRecordsCount: number; conflictsCount: number };
   logAudit: (action: string, module: string, recordReference: string, details: string) => void;
@@ -283,120 +284,137 @@ const initialSecuritySettings: RoleSecuritySettings = {
   isLocked: false,
 };
 
+// Safe synchronous loader for LocalStorage on startup
+const getStoredInitialState = (): any => {
+  try {
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error loading initial saved state from localStorage:', e);
+  }
+  return null;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const initialStored = useRef(getStoredInitialState()).current;
+
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>('Super Admin');
-  const [securitySettings, setSecuritySettings] = useState<RoleSecuritySettings>(initialSecuritySettings);
+  const [securitySettings, setSecuritySettings] = useState<RoleSecuritySettings>(() => {
+    if (initialStored?.securitySettings) {
+      return {
+        ...initialSecuritySettings,
+        ...initialStored.securitySettings,
+        passwords: {
+          ...initialSecuritySettings.passwords,
+          ...(initialStored.securitySettings.passwords || {}),
+        },
+        isLocked: false,
+      };
+    }
+    return initialSecuritySettings;
+  });
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
   const [pendingRoleSwitch, setPendingRoleSwitch] = useState<UserRole | null>(null);
 
-  const [companySettings, setCompanySettings] = useState<CompanySettings>(initialCompanySettings);
-  const [clients, setClients] = useState<Client[]>(initialClients);
-  const [sites, setSites] = useState<Site[]>(initialSites);
-  const [guards, setGuards] = useState<Guard[]>(initialGuards);
-  const [guardAssignments, setGuardAssignments] = useState<GuardAssignmentHistory[]>(initialGuardAssignments);
-  const [weapons, setWeapons] = useState<Weapon[]>(initialWeapons);
-  const [weaponAssignments, setWeaponAssignments] = useState<WeaponAssignmentHistory[]>(initialWeaponAssignments);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [inventoryCategories, setInventoryCategories] = useState<InventoryCategory[]>(initialInventoryCategories);
-  const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(initialStockTransactions);
-  const [guardIssuedItems, setGuardIssuedItems] = useState<GuardIssuedItem[]>(initialGuardIssuedItems);
-  const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
-  const [vouchers, setVouchers] = useState<Voucher[]>(initialVouchers);
-  const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>(initialOpeningBalances);
-  const [openingBalanceAudits, setOpeningBalanceAudits] = useState<OpeningBalanceAudit[]>(initialOpeningBalanceAudits);
-  const [openingBatches, setOpeningBatches] = useState<FiscalYearOpeningBatch[]>(initialOpeningBatches);
-  const [currentFiscalYear, setCurrentFiscalYear] = useState<string>('2026-27');
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(
+    () => initialStored?.companySettings || initialCompanySettings
+  );
+  const [clients, setClients] = useState<Client[]>(
+    () => (Array.isArray(initialStored?.clients) ? initialStored.clients : initialClients)
+  );
+  const [sites, setSites] = useState<Site[]>(
+    () => (Array.isArray(initialStored?.sites) ? initialStored.sites : initialSites)
+  );
+  const [guards, setGuards] = useState<Guard[]>(
+    () => (Array.isArray(initialStored?.guards) ? initialStored.guards : initialGuards)
+  );
+  const [guardAssignments, setGuardAssignments] = useState<GuardAssignmentHistory[]>(
+    () => (Array.isArray(initialStored?.guardAssignments) ? initialStored.guardAssignments : initialGuardAssignments)
+  );
+  const [weapons, setWeapons] = useState<Weapon[]>(
+    () => (Array.isArray(initialStored?.weapons) ? initialStored.weapons : initialWeapons)
+  );
+  const [weaponAssignments, setWeaponAssignments] = useState<WeaponAssignmentHistory[]>(
+    () => (Array.isArray(initialStored?.weaponAssignments) ? initialStored.weaponAssignments : initialWeaponAssignments)
+  );
+  const [products, setProducts] = useState<Product[]>(
+    () => (Array.isArray(initialStored?.products) ? initialStored.products : initialProducts)
+  );
+  const [inventoryCategories, setInventoryCategories] = useState<InventoryCategory[]>(
+    () => (Array.isArray(initialStored?.inventoryCategories) && initialStored.inventoryCategories.length > 0
+      ? initialStored.inventoryCategories
+      : initialInventoryCategories)
+  );
+  const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(
+    () => (Array.isArray(initialStored?.stockTransactions) ? initialStored.stockTransactions : initialStockTransactions)
+  );
+  const [guardIssuedItems, setGuardIssuedItems] = useState<GuardIssuedItem[]>(
+    () => (Array.isArray(initialStored?.guardIssuedItems) ? initialStored.guardIssuedItems : initialGuardIssuedItems)
+  );
+  const [accounts, setAccounts] = useState<Account[]>(
+    () => (Array.isArray(initialStored?.accounts) && initialStored.accounts.length > 0
+      ? initialStored.accounts
+      : initialAccounts)
+  );
+  const [vouchers, setVouchers] = useState<Voucher[]>(
+    () => (Array.isArray(initialStored?.vouchers) ? initialStored.vouchers : initialVouchers)
+  );
+  const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>(
+    () => (Array.isArray(initialStored?.openingBalances) ? initialStored.openingBalances : initialOpeningBalances)
+  );
+  const [openingBalanceAudits, setOpeningBalanceAudits] = useState<OpeningBalanceAudit[]>(
+    () => (Array.isArray(initialStored?.openingBalanceAudits) ? initialStored.openingBalanceAudits : initialOpeningBalanceAudits)
+  );
+  const [openingBatches, setOpeningBatches] = useState<FiscalYearOpeningBatch[]>(
+    () => (Array.isArray(initialStored?.openingBatches) ? initialStored.openingBatches : initialOpeningBatches)
+  );
+  const [currentFiscalYear, setCurrentFiscalYear] = useState<string>(
+    () => initialStored?.currentFiscalYear || '2026-27'
+  );
   const fiscalYears = ['2026-27', '2025-26', '2027-28'];
-  const [salarySlips, setSalarySlips] = useState<SalarySlip[]>(initialSalarySlips);
-  const [clientInvoices, setClientInvoices] = useState<ClientInvoice[]>(initialClientInvoices);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
-  const [attendanceRecords, setAttendanceRecords] = useState<GuardAttendanceRecord[]>(initialAttendanceRecords);
+  const [salarySlips, setSalarySlips] = useState<SalarySlip[]>(
+    () => (Array.isArray(initialStored?.salarySlips) ? initialStored.salarySlips : initialSalarySlips)
+  );
+  const [clientInvoices, setClientInvoices] = useState<ClientInvoice[]>(
+    () => (Array.isArray(initialStored?.clientInvoices) ? initialStored.clientInvoices : initialClientInvoices)
+  );
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(
+    () => (Array.isArray(initialStored?.auditLogs) ? initialStored.auditLogs : initialAuditLogs)
+  );
+  const [attendanceRecords, setAttendanceRecords] = useState<GuardAttendanceRecord[]>(
+    () => (Array.isArray(initialStored?.attendanceRecords) ? initialStored.attendanceRecords : initialAttendanceRecords)
+  );
 
   // Multi-Account Expense & Ledger System State
-  const [financeAccounts, setFinanceAccounts] = useState<FinanceAccount[]>(initialFinanceAccounts);
-  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(initialExpenseCategories);
-  const [parties, setParties] = useState<Party[]>(initialParties);
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(initialCashTransactions);
+  const [financeAccounts, setFinanceAccounts] = useState<FinanceAccount[]>(
+    () => (Array.isArray(initialStored?.financeAccounts) && initialStored.financeAccounts.length > 0
+      ? initialStored.financeAccounts
+      : initialFinanceAccounts)
+  );
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>(
+    () => (Array.isArray(initialStored?.expenseCategories) && initialStored.expenseCategories.length > 0
+      ? initialStored.expenseCategories
+      : initialExpenseCategories)
+  );
+  const [parties, setParties] = useState<Party[]>(
+    () => (Array.isArray(initialStored?.parties) && initialStored.parties.length > 0
+      ? initialStored.parties
+      : initialParties)
+  );
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(
+    () => (Array.isArray(initialStored?.cashTransactions) && initialStored.cashTransactions.length > 0
+      ? initialStored.cashTransactions
+      : initialCashTransactions)
+  );
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [printPayload, setPrintPayload] = useState<PrintDocumentPayload | null>(null);
 
-  const isLoadedRef = useRef<boolean>(false);
-
-  // Load from LocalStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.clients) setClients(parsed.clients);
-        if (parsed.sites) setSites(parsed.sites);
-        if (parsed.guards) setGuards(parsed.guards);
-        if (parsed.guardAssignments) setGuardAssignments(parsed.guardAssignments);
-        if (parsed.weapons) setWeapons(parsed.weapons);
-        if (parsed.weaponAssignments) setWeaponAssignments(parsed.weaponAssignments);
-        if (parsed.products) setProducts(parsed.products);
-        if (parsed.inventoryCategories && Array.isArray(parsed.inventoryCategories) && parsed.inventoryCategories.length > 0) {
-          setInventoryCategories(parsed.inventoryCategories);
-        }
-        if (parsed.stockTransactions) setStockTransactions(parsed.stockTransactions);
-        if (parsed.guardIssuedItems) setGuardIssuedItems(parsed.guardIssuedItems);
-        if (parsed.accounts && Array.isArray(parsed.accounts)) setAccounts(parsed.accounts);
-        if (parsed.vouchers && Array.isArray(parsed.vouchers)) setVouchers(parsed.vouchers);
-        if (parsed.openingBalances && Array.isArray(parsed.openingBalances)) {
-          setOpeningBalances(parsed.openingBalances);
-        }
-        if (parsed.openingBalanceAudits && Array.isArray(parsed.openingBalanceAudits)) {
-          setOpeningBalanceAudits(parsed.openingBalanceAudits);
-        }
-        if (parsed.openingBatches && Array.isArray(parsed.openingBatches)) {
-          setOpeningBatches(parsed.openingBatches);
-        }
-        if (parsed.currentFiscalYear) {
-          setCurrentFiscalYear(parsed.currentFiscalYear);
-        }
-        if (parsed.salarySlips) setSalarySlips(parsed.salarySlips);
-        if (parsed.clientInvoices) setClientInvoices(parsed.clientInvoices);
-        if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
-        if (parsed.companySettings) setCompanySettings(parsed.companySettings);
-        if (parsed.financeAccounts && Array.isArray(parsed.financeAccounts) && parsed.financeAccounts.length > 0) {
-          setFinanceAccounts(parsed.financeAccounts);
-        }
-        if (parsed.expenseCategories && Array.isArray(parsed.expenseCategories) && parsed.expenseCategories.length > 0) {
-          setExpenseCategories(parsed.expenseCategories);
-        }
-        if (parsed.parties && Array.isArray(parsed.parties) && parsed.parties.length > 0) {
-          setParties(parsed.parties);
-        }
-        if (parsed.cashTransactions && Array.isArray(parsed.cashTransactions) && parsed.cashTransactions.length > 0) {
-          setCashTransactions(parsed.cashTransactions);
-        }
-        if (parsed.securitySettings) {
-          setSecuritySettings({
-            ...initialSecuritySettings,
-            ...parsed.securitySettings,
-            passwords: {
-              ...initialSecuritySettings.passwords,
-              ...(parsed.securitySettings.passwords || {}),
-            },
-            isLocked: false, // Start unlocked
-          });
-        }
-        if (parsed.attendanceRecords && Array.isArray(parsed.attendanceRecords) && parsed.attendanceRecords.length > 0) {
-          setAttendanceRecords(parsed.attendanceRecords);
-        }
-      }
-    } catch (e) {
-      console.error('Error loading saved state:', e);
-    } finally {
-      isLoadedRef.current = true;
-    }
-  }, []);
-
   // Save to LocalStorage whenever state changes
   useEffect(() => {
-    if (!isLoadedRef.current) return;
     try {
       const stateToSave = {
         clients,
@@ -3246,34 +3264,187 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const deleteAllOperationalData = () => {
-    // Keeps system structure, company profile, accounts, categories, and active Super Admin
-    setGuards([]);
-    setSites([]);
-    setClients([]);
-    setWeapons([]);
-    setGuardAssignments([]);
-    setWeaponAssignments([]);
-    setProducts([]);
-    setStockTransactions([]);
-    setGuardIssuedItems([]);
-    setVouchers([]);
-    setSalarySlips([]);
-    setClientInvoices([]);
-    setAttendanceRecords([]);
-    setCashTransactions([]);
-    setAuditLogs([
+  const resetSystemDataToZero = (): { success: boolean; backupJson: string } => {
+    // 1. Generate full JSON backup and trigger automatic download
+    const backupJson = exportDataJson();
+    try {
+      const blob = new Blob([backupJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `MSS_BACKUP_BEFORE_ZERO_RESET_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn('Auto download of backup JSON failed in resetSystemDataToZero:', err);
+    }
+
+    // 2. Reset accounts to 0 opening and 0 current balances (preserving all 16 accounts in the Chart of Accounts)
+    const zeroAccounts: Account[] = accounts.map((acc) => ({
+      ...acc,
+      openingBalance: 0,
+      openingBalanceType: (acc.category === 'Asset' || acc.category === 'Expense') ? 'Debit' : 'Credit',
+      currentBalance: 0,
+    }));
+
+    // 3. Reset client balances to 0 (preserving all client master records)
+    const zeroClients: Client[] = clients.map((c) => ({
+      ...c,
+      currentBalance: 0,
+    }));
+
+    // 4. Reset site assigned guards count to 0 (preserving all sites)
+    const zeroSites: Site[] = sites.map((s) => ({
+      ...s,
+      assignedGuardsCount: 0,
+    }));
+
+    // 5. Reset guards to unassigned and Active status (preserving all personnel)
+    const zeroGuards: Guard[] = guards.map((g) => ({
+      ...g,
+      currentSiteId: undefined,
+      currentSiteName: undefined,
+      assignedWeaponId: undefined,
+      assignedWeaponName: undefined,
+      status: 'Active',
+    }));
+
+    // 6. Reset weapons to Available and unassigned (preserving all armory records)
+    const zeroWeapons: Weapon[] = weapons.map((w) => ({
+      ...w,
+      currentStatus: 'Available',
+      assignedToGuardId: undefined,
+      assignedToGuardName: undefined,
+      assignedSiteId: undefined,
+      assignedSiteName: undefined,
+    }));
+
+    // 7. Reset inventory items to 0 current stock (preserving all catalog items)
+    const zeroProducts: Product[] = products.map((p) => ({
+      ...p,
+      currentStock: 0,
+    }));
+
+    // 8. Reset finance accounts to 0 balance (preserving all bank/cash accounts)
+    const zeroFinanceAccounts: FinanceAccount[] = financeAccounts.map((fa) => ({
+      ...fa,
+      openingBalance: 0,
+      currentBalance: 0,
+    }));
+
+    // 9. Reset parties to 0 balance (preserving all party profiles)
+    const zeroParties: Party[] = parties.map((pt) => ({
+      ...pt,
+      openingAdvanceBalance: 0,
+      balance: 0,
+    }));
+
+    // 10. Reset opening batches to Draft status and clear linked vouchers
+    const resetBatches: FiscalYearOpeningBatch[] = openingBatches.map((b) => ({
+      ...b,
+      status: 'Draft',
+      voucherId: undefined,
+      voucherNo: undefined,
+      postedAt: undefined,
+      postedBy: undefined,
+      lockedAt: undefined,
+      lockedBy: undefined,
+    }));
+
+    // 11. Transactional and operational lists to empty array []
+    const emptyVouchers: Voucher[] = [];
+    const emptyOpeningBalances: OpeningBalance[] = [];
+    const emptyOpeningAudits: OpeningBalanceAudit[] = [];
+    const emptySalarySlips: SalarySlip[] = [];
+    const emptyClientInvoices: ClientInvoice[] = [];
+    const emptyCashTransactions: CashTransaction[] = [];
+    const emptyStockTransactions: StockTransaction[] = [];
+    const emptyGuardIssuedItems: GuardIssuedItem[] = [];
+    const emptyAttendanceRecords: GuardAttendanceRecord[] = [];
+    const emptyGuardAssignments: GuardAssignmentHistory[] = [];
+    const emptyWeaponAssignments: WeaponAssignmentHistory[] = [];
+
+    // 12. Single clean audit log entry documenting the reset
+    const zeroAuditLogs: AuditLog[] = [
       {
-        id: `LOG-${Date.now()}`,
-        action: 'Delete All Data',
+        id: `LOG-ZERO-${Date.now()}`,
+        action: 'System Reset to Zero',
         module: 'System Administration',
-        recordReference: 'CRITICAL-WIPE',
-        details: 'Super Admin wiped all operational runtime database records.',
-        timestamp: new Date().toISOString(),
+        recordReference: 'START-FROM-ZERO',
+        details: 'Super Admin executed Start From Zero. All transactional journals, vouchers, invoices, payrolls, stock movements, and attendance cleared. Master data preserved with 0.00 balances.',
+        timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
         userName: 'Super Admin (Ali Akbar)',
         userRole: 'Super Admin',
       },
-    ]);
+    ];
+
+    // Update all React states
+    setAccounts(zeroAccounts);
+    setClients(zeroClients);
+    setSites(zeroSites);
+    setGuards(zeroGuards);
+    setWeapons(zeroWeapons);
+    setProducts(zeroProducts);
+    setFinanceAccounts(zeroFinanceAccounts);
+    setParties(zeroParties);
+    setOpeningBatches(resetBatches);
+
+    setVouchers(emptyVouchers);
+    setOpeningBalances(emptyOpeningBalances);
+    setOpeningBalanceAudits(emptyOpeningAudits);
+    setSalarySlips(emptySalarySlips);
+    setClientInvoices(emptyClientInvoices);
+    setCashTransactions(emptyCashTransactions);
+    setStockTransactions(emptyStockTransactions);
+    setGuardIssuedItems(emptyGuardIssuedItems);
+    setAttendanceRecords(emptyAttendanceRecords);
+    setGuardAssignments(emptyGuardAssignments);
+    setWeaponAssignments(emptyWeaponAssignments);
+    setAuditLogs(zeroAuditLogs);
+
+    // Synchronously write clean state to LocalStorage so immediate reload persists
+    const cleanState = {
+      clients: zeroClients,
+      sites: zeroSites,
+      guards: zeroGuards,
+      guardAssignments: emptyGuardAssignments,
+      weapons: zeroWeapons,
+      weaponAssignments: emptyWeaponAssignments,
+      products: zeroProducts,
+      inventoryCategories,
+      stockTransactions: emptyStockTransactions,
+      guardIssuedItems: emptyGuardIssuedItems,
+      accounts: zeroAccounts,
+      vouchers: emptyVouchers,
+      openingBalances: emptyOpeningBalances,
+      openingBalanceAudits: emptyOpeningAudits,
+      openingBatches: resetBatches,
+      currentFiscalYear,
+      salarySlips: emptySalarySlips,
+      clientInvoices: emptyClientInvoices,
+      auditLogs: zeroAuditLogs,
+      companySettings,
+      securitySettings,
+      attendanceRecords: emptyAttendanceRecords,
+      financeAccounts: zeroFinanceAccounts,
+      expenseCategories,
+      parties: zeroParties,
+      cashTransactions: emptyCashTransactions,
+    };
+
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleanState));
+    } catch (e) {
+      console.error('Error writing clean zero state to localStorage:', e);
+    }
+
+    return { success: true, backupJson };
+  };
+
+  const deleteAllOperationalData = () => {
+    resetSystemDataToZero();
   };
 
   // Preview intelligent merge
@@ -3725,6 +3896,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getDataSummaryCounts,
         resetToCleanInitialDataset,
         deleteAllOperationalData,
+        resetSystemDataToZero,
         previewMergeBackupJson,
         executeMergeBackup,
         logAudit,

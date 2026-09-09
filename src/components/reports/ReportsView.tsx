@@ -65,7 +65,7 @@ export const ReportsView: React.FC = () => {
   const totalEquity = equityAccounts.reduce((sum, a) => sum + a.currentBalance, 0) + netProfit;
 
   // Receivables
-  const totalClientReceivables = clients.reduce((sum, c) => sum + (c.currentBalance || c.monthlyBillingAmount || 0), 0);
+  const totalClientReceivables = clients.reduce((sum, c) => sum + (c.currentBalance !== undefined ? (Number(c.currentBalance) || 0) : (c.monthlyBillingAmount || 0)), 0);
 
   // Guards Force
   const totalGuards = guards.length;
@@ -424,7 +424,13 @@ export const ReportsView: React.FC = () => {
           let periodDr = 0;
           let periodCr = 0;
           vouchers.forEach((v) => {
-            if (v.voucherNo === `JV-OB-${currentFiscalYear}`) return;
+            if (
+              v.voucherNo === `JV-OB-${currentFiscalYear}` ||
+              v.voucherNo === 'OB-0001' ||
+              v.referenceNo?.startsWith('OB-') ||
+              v.id?.startsWith('VOUCH-OB-') ||
+              v.narration?.toLowerCase().includes('opening balance')
+            ) return;
             v.entries.forEach((e) => {
               if (e.accountId === acc.id) {
                 periodDr += Number(e.debit) || 0;
@@ -763,7 +769,13 @@ export const ReportsView: React.FC = () => {
 
         // Transactions from vouchers (excluding auto OB voucher)
         vouchers.forEach((v) => {
-          if (v.voucherNo === `JV-OB-${currentFiscalYear}`) return;
+          if (
+            v.voucherNo === `JV-OB-${currentFiscalYear}` ||
+            v.voucherNo === 'OB-0001' ||
+            v.referenceNo?.startsWith('OB-') ||
+            v.id?.startsWith('VOUCH-OB-') ||
+            v.narration?.toLowerCase().includes('opening balance')
+          ) return;
           v.entries.forEach((e, idx) => {
             if (e.accountId === selectedLedgerAccount?.id) {
               const d = Number(e.debit) || 0;
@@ -978,7 +990,7 @@ export const ReportsView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-right font-black font-mono text-emerald-400 text-sm">
-                        {formatPKR(c.currentBalance || c.monthlyBillingAmount || 0)}
+                        {formatPKR(c.currentBalance !== undefined ? (Number(c.currentBalance) || 0) : (c.monthlyBillingAmount || 0))}
                       </td>
                     </tr>
                   );
