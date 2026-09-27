@@ -660,16 +660,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...guardData,
       id,
       guardCode: guardData.guardCode || `G-${1000 + guards.length + 1}`,
+      phone: guardData.phone || guardData.contact || '',
+      contact: guardData.contact || guardData.phone || '',
+      date: guardData.date || guardData.joiningDate || new Date().toISOString().split('T')[0],
+      joiningDate: guardData.joiningDate || guardData.date || new Date().toISOString().split('T')[0],
+      designation: guardData.designation || 'Security Guard',
     };
     setGuards((prev) => [newGuard, ...prev]);
+
+    // If initial site station assigned, record assignment history
+    if (newGuard.currentSiteId && newGuard.currentSiteName) {
+      const nowStr = new Date().toLocaleString('sv-SE').replace('T', ' ');
+      const todayStr = newGuard.date || new Date().toISOString().split('T')[0];
+      const initialAssignment: GuardAssignmentHistory = {
+        id: `ASN-${Date.now()}`,
+        guardId: newGuard.id,
+        guardName: newGuard.name,
+        guardCode: newGuard.guardCode,
+        siteId: newGuard.currentSiteId,
+        siteName: newGuard.currentSiteName,
+        clientName: sites.find((s) => s.id === newGuard.currentSiteId)?.clientName || 'Client Site',
+        startDate: todayStr,
+        shift: '12 Hours (Day Shift)',
+        status: 'Active',
+        remarks: 'Initial site stationing on registration',
+        assignedBy: currentUserRole,
+        assignedAt: nowStr,
+      };
+      setGuardAssignments((prev) => [initialAssignment, ...prev]);
+    }
+
+    // If weapon assigned, update weapon state in armoury
+    if (newGuard.currentWeaponId) {
+      setWeapons((prev) =>
+        prev.map((w) =>
+          w.weaponCode === newGuard.currentWeaponId || w.id === newGuard.currentWeaponId
+            ? {
+                ...w,
+                currentStatus: 'Issued',
+                currentGuardId: newGuard.id,
+                currentGuardName: newGuard.name,
+                currentSiteId: newGuard.currentSiteId,
+                currentSiteName: newGuard.currentSiteName,
+              }
+            : w
+        )
+      );
+    }
+
     logAudit('Guard Registered', 'Guards', newGuard.guardCode, `Registered guard ${newGuard.name} (CNIC: ${newGuard.cnic})`);
     return newGuard;
   };
 
   const updateGuard = (id: string, updated: Partial<Guard>) => {
     setGuards((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, ...updated } : g))
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        return {
+          ...g,
+          ...updated,
+          phone: updated.phone || updated.contact || g.phone || g.contact || '',
+          contact: updated.contact || updated.phone || g.contact || g.phone || '',
+          date: updated.date || updated.joiningDate || g.date || g.joiningDate,
+          joiningDate: updated.joiningDate || updated.date || g.joiningDate || g.date,
+        };
+      })
     );
+
+    // If weapon assignment was modified
+    if (updated.currentWeaponId !== undefined) {
+      setWeapons((prev) =>
+        prev.map((w) => {
+          if (w.currentGuardId === id && w.weaponCode !== updated.currentWeaponId && w.id !== updated.currentWeaponId) {
+            return {
+              ...w,
+              currentStatus: 'Available',
+              currentGuardId: undefined,
+              currentGuardName: undefined,
+              currentSiteId: undefined,
+              currentSiteName: undefined,
+            };
+          }
+          if (updated.currentWeaponId && (w.weaponCode === updated.currentWeaponId || w.id === updated.currentWeaponId)) {
+            const currentGuard = guards.find((g) => g.id === id);
+            return {
+              ...w,
+              currentStatus: 'Issued',
+              currentGuardId: id,
+              currentGuardName: updated.name || currentGuard?.name || '',
+              currentSiteId: updated.currentSiteId !== undefined ? updated.currentSiteId : currentGuard?.currentSiteId,
+              currentSiteName: updated.currentSiteName !== undefined ? updated.currentSiteName : currentGuard?.currentSiteName,
+            };
+          }
+          return w;
+        })
+      );
+    }
+
     logAudit('Guard Updated', 'Guards', id, `Updated guard record for ${id}`);
   };
 

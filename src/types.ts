@@ -74,23 +74,30 @@ export interface Site {
 export interface Guard {
   id: string;
   guardCode: string; // e.g. G-1001
+  date?: string; // Date of registration / record
   name: string;
   fatherName: string;
+  contact?: string; // Contact / Mobile number
+  phone: string; // Compatibility alias
   cnic: string;
-  phone: string;
-  address: string;
-  joiningDate: string;
-  designation: 'Security Guard' | 'Armed Guard' | 'Lady Guard' | 'Site Supervisor' | 'Head Guard' | 'Gunman';
-  basicSalary: number;
+  cast?: string; // Optional
+  height?: string; // Optional e.g. 5 ft 8 in
+  weight?: number | string; // Optional in kg
+  dateOfBirth?: string; // Optional
+  basicSalary: number; // Basic Monthly Salary (PKR)
+  address: string; // Permanent Residential Address
   status: 'Active' | 'On Leave' | 'Suspended' | 'Terminated';
-  bloodGroup?: string;
-  emergencyContactName: string;
-  emergencyContactPhone: string;
-  notes?: string;
-  photoUrl?: string;
   currentSiteId?: string;
   currentSiteName?: string;
   currentWeaponId?: string;
+  // Backward compatibility fields for legacy records
+  joiningDate?: string;
+  designation?: 'Security Guard' | 'Armed Guard' | 'Lady Guard' | 'Site Supervisor' | 'Head Guard' | 'Gunman';
+  bloodGroup?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  notes?: string;
+  photoUrl?: string;
 }
 
 export type AttendanceStatus = 'Full Day' | 'Double Duty' | 'Half Day' | 'Absent' | 'Leave' | 'Short Duty';

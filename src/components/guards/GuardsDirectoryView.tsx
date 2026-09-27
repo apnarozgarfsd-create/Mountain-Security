@@ -13,10 +13,11 @@ import {
   Trash2,
   UserCheck,
   Users,
+  X,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Guard, GuardDesignation, GuardStatus } from '../../types';
+import { Guard, GuardStatus } from '../../types';
 import { formatPKR } from '../../utils/formatters';
 
 export const GuardsDirectoryView: React.FC = () => {
@@ -28,12 +29,10 @@ export const GuardsDirectoryView: React.FC = () => {
     updateGuard,
     deleteGuard,
     transferGuard,
-    triggerPrint,
-    companySettings,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDesignation, setFilterDesignation] = useState('All');
+  const [filterSite, setFilterSite] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All');
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -42,73 +41,153 @@ export const GuardsDirectoryView: React.FC = () => {
   const [deleteModalGuard, setDeleteModalGuard] = useState<Guard | null>(null);
 
   // New Guard Form State
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [name, setName] = useState('');
   const [fatherName, setFatherName] = useState('');
+  const [contact, setContact] = useState('');
   const [cnic, setCnic] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
-  const [designation, setDesignation] = useState<GuardDesignation>('Armed Guard');
+  const [cast, setCast] = useState('');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState<string>('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [basicSalary, setBasicSalary] = useState<number>(40000);
-  const [bloodGroup, setBloodGroup] = useState('B+');
-  const [emergencyContactName, setEmergencyContactName] = useState('');
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
+  const [address, setAddress] = useState('');
   const [initialSiteId, setInitialSiteId] = useState('');
   const [initialWeaponId, setInitialWeaponId] = useState('');
-  const [notes, setNotes] = useState('');
+  const [registerCnicError, setRegisterCnicError] = useState('');
 
   // Edit Guard Form State
+  const [editDate, setEditDate] = useState('');
   const [editName, setEditName] = useState('');
   const [editFatherName, setEditFatherName] = useState('');
+  const [editContact, setEditContact] = useState('');
   const [editCnic, setEditCnic] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editDesignation, setEditDesignation] = useState<GuardDesignation>('Armed Guard');
+  const [editCast, setEditCast] = useState('');
+  const [editHeight, setEditHeight] = useState('');
+  const [editWeight, setEditWeight] = useState<string>('');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
   const [editBasicSalary, setEditBasicSalary] = useState<number>(40000);
-  const [editBloodGroup, setEditBloodGroup] = useState('B+');
+  const [editAddress, setEditAddress] = useState('');
+  const [editSiteId, setEditSiteId] = useState('');
+  const [editWeaponId, setEditWeaponId] = useState('');
   const [editStatus, setEditStatus] = useState<GuardStatus>('Active');
-  const [editEmergencyContactName, setEditEmergencyContactName] = useState('');
-  const [editEmergencyContactPhone, setEditEmergencyContactPhone] = useState('');
-  const [editNotes, setEditNotes] = useState('');
+  const [editCnicError, setEditCnicError] = useState('');
 
   // Transfer Form State
   const [targetSiteId, setTargetSiteId] = useState(sites[0]?.id || '');
   const [targetShift, setTargetShift] = useState('12 Hours (Day Shift)');
   const [transferRemarks, setTransferRemarks] = useState('');
 
+  const validatePakistaniCNIC = (value: string): boolean => {
+    const digitsOnly = value.replace(/\D/g, '');
+    return digitsOnly.length === 13;
+  };
+
+  const resetRegisterForm = () => {
+    setDate(new Date().toISOString().split('T')[0]);
+    setName('');
+    setFatherName('');
+    setContact('');
+    setCnic('');
+    setCast('');
+    setHeight('');
+    setWeight('');
+    setDateOfBirth('');
+    setBasicSalary(40000);
+    setAddress('');
+    setInitialSiteId('');
+    setInitialWeaponId('');
+    setRegisterCnicError('');
+  };
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate 13-digit Pakistani CNIC
+    if (!validatePakistaniCNIC(cnic)) {
+      setRegisterCnicError('CNIC must be exactly 13 digits (e.g. 33100-0000000-X).');
+      return;
+    }
+    setRegisterCnicError('');
+
+    const selectedSite = sites.find((s) => s.id === initialSiteId);
+
+    addGuard({
+      guardCode: `G-${1000 + guards.length + 1}`,
+      date,
+      joiningDate: date,
+      name: name.trim(),
+      fatherName: fatherName.trim(),
+      contact: contact.trim(),
+      phone: contact.trim(),
+      cnic: cnic.trim(),
+      cast: cast.trim() || undefined,
+      height: height.trim() || undefined,
+      weight: weight ? Number(weight) : undefined,
+      dateOfBirth: dateOfBirth || undefined,
+      basicSalary: Number(basicSalary) || 0,
+      address: address.trim(),
+      currentSiteId: initialSiteId || undefined,
+      currentSiteName: selectedSite?.siteName || undefined,
+      currentWeaponId: initialWeaponId || undefined,
+      status: 'Active',
+      designation: 'Security Guard',
+    });
+
+    setIsRegisterOpen(false);
+    resetRegisterForm();
+  };
+
   const openEditModal = (guard: Guard) => {
     setEditModalGuard(guard);
-    setEditName(guard.name);
+    setEditDate(guard.date || guard.joiningDate || new Date().toISOString().split('T')[0]);
+    setEditName(guard.name || '');
     setEditFatherName(guard.fatherName || '');
-    setEditCnic(guard.cnic);
-    setEditPhone(guard.phone);
-    setEditAddress(guard.address || '');
-    setEditDesignation(guard.designation);
+    setEditContact(guard.contact || guard.phone || '');
+    setEditCnic(guard.cnic || '');
+    setEditCast(guard.cast || '');
+    setEditHeight(guard.height || '');
+    setEditWeight(guard.weight !== undefined && guard.weight !== null ? String(guard.weight) : '');
+    setEditDateOfBirth(guard.dateOfBirth || '');
     setEditBasicSalary(guard.basicSalary || 40000);
-    setEditBloodGroup(guard.bloodGroup || 'B+');
-    setEditStatus(guard.status);
-    setEditEmergencyContactName(guard.emergencyContactName || '');
-    setEditEmergencyContactPhone(guard.emergencyContactPhone || '');
-    setEditNotes(guard.notes || '');
+    setEditAddress(guard.address || '');
+    setEditSiteId(guard.currentSiteId || '');
+    setEditWeaponId(guard.currentWeaponId || '');
+    setEditStatus(guard.status || 'Active');
+    setEditCnicError('');
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editModalGuard) return;
 
+    // Validate 13-digit Pakistani CNIC
+    if (!validatePakistaniCNIC(editCnic)) {
+      setEditCnicError('CNIC must be exactly 13 digits (e.g. 33100-0000000-X).');
+      return;
+    }
+    setEditCnicError('');
+
+    const selectedSite = sites.find((s) => s.id === editSiteId);
+
     updateGuard(editModalGuard.id, {
-      name: editName,
-      fatherName: editFatherName,
-      cnic: editCnic,
-      phone: editPhone,
-      address: editAddress,
-      designation: editDesignation,
-      basicSalary: editBasicSalary,
-      bloodGroup: editBloodGroup,
+      date: editDate,
+      joiningDate: editDate,
+      name: editName.trim(),
+      fatherName: editFatherName.trim(),
+      contact: editContact.trim(),
+      phone: editContact.trim(),
+      cnic: editCnic.trim(),
+      cast: editCast.trim() || undefined,
+      height: editHeight.trim() || undefined,
+      weight: editWeight ? Number(editWeight) : undefined,
+      dateOfBirth: editDateOfBirth || undefined,
+      basicSalary: Number(editBasicSalary) || 0,
+      address: editAddress.trim(),
+      currentSiteId: editSiteId || undefined,
+      currentSiteName: editSiteId ? selectedSite?.siteName : undefined,
+      currentWeaponId: editWeaponId || undefined,
       status: editStatus,
-      emergencyContactName: editEmergencyContactName,
-      emergencyContactPhone: editEmergencyContactPhone,
-      notes: editNotes,
     });
 
     setEditModalGuard(null);
@@ -118,47 +197,6 @@ export const GuardsDirectoryView: React.FC = () => {
     if (!deleteModalGuard) return;
     deleteGuard(deleteModalGuard.id);
     setDeleteModalGuard(null);
-  };
-
-  const designations: GuardDesignation[] = [
-    'Security Guard',
-    'Armed Guard',
-    'Head Guard',
-    'Site Supervisor',
-    'Gunman',
-    'Lady Guard',
-  ];
-
-  const handleRegisterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const site = sites.find((s) => s.id === initialSiteId);
-    const newGuard = addGuard({
-      guardCode: `G-${1000 + guards.length + 1}`,
-      name,
-      fatherName,
-      cnic,
-      phone,
-      address,
-      joiningDate,
-      designation,
-      basicSalary,
-      status: 'Active',
-      bloodGroup,
-      emergencyContactName,
-      emergencyContactPhone,
-      currentSiteId: initialSiteId || undefined,
-      currentSiteName: site?.siteName || undefined,
-      currentWeaponId: initialWeaponId || undefined,
-      notes,
-    });
-
-    setIsRegisterOpen(false);
-    // Reset form
-    setName('');
-    setFatherName('');
-    setCnic('');
-    setPhone('');
-    setAddress('');
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {
@@ -171,14 +209,26 @@ export const GuardsDirectoryView: React.FC = () => {
   };
 
   const filteredGuards = guards.filter((g) => {
+    const term = searchTerm.toLowerCase();
     const matchesSearch =
-      g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.guardCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.cnic.includes(searchTerm) ||
-      (g.currentSiteName && g.currentSiteName.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesDesig = filterDesignation === 'All' || g.designation === filterDesignation;
+      g.name.toLowerCase().includes(term) ||
+      (g.fatherName && g.fatherName.toLowerCase().includes(term)) ||
+      (g.guardCode && g.guardCode.toLowerCase().includes(term)) ||
+      (g.cnic && g.cnic.includes(term)) ||
+      (g.contact && g.contact.includes(term)) ||
+      (g.phone && g.phone.includes(term)) ||
+      (g.cast && g.cast.toLowerCase().includes(term)) ||
+      (g.currentSiteName && g.currentSiteName.toLowerCase().includes(term)) ||
+      (g.currentWeaponId && g.currentWeaponId.toLowerCase().includes(term));
+
+    const matchesSite =
+      filterSite === 'All' ||
+      (filterSite === 'Unassigned' && !g.currentSiteId) ||
+      g.currentSiteId === filterSite;
+
     const matchesStatus = filterStatus === 'All' || g.status === filterStatus;
-    return matchesSearch && matchesDesig && matchesStatus;
+
+    return matchesSearch && matchesSite && matchesStatus;
   });
 
   return (
@@ -196,7 +246,10 @@ export const GuardsDirectoryView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setIsRegisterOpen(true)}
+          onClick={() => {
+            resetRegisterForm();
+            setIsRegisterOpen(true);
+          }}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
@@ -210,22 +263,25 @@ export const GuardsDirectoryView: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search by Guard Name, Code, CNIC, Site..."
+            placeholder="Search by Name, Father Name, CNIC, Site, Weapon..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-white placeholder:text-slate-500 focus:outline-hidden"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <select
-            value={filterDesignation}
-            onChange={(e) => setFilterDesignation(e.target.value)}
+            value={filterSite}
+            onChange={(e) => setFilterSite(e.target.value)}
             className="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-1.5 focus:outline-hidden"
           >
-            <option value="All">All Designations</option>
-            {designations.map((d) => (
-              <option key={d} value={d}>{d}</option>
+            <option value="All">All Site Stations</option>
+            <option value="Unassigned">Unassigned (HQ Pool)</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.siteName}
+              </option>
             ))}
           </select>
 
@@ -237,127 +293,209 @@ export const GuardsDirectoryView: React.FC = () => {
             <option value="All">All Statuses</option>
             <option value="Active">Active</option>
             <option value="On Leave">On Leave</option>
+            <option value="Suspended">Suspended</option>
             <option value="Terminated">Terminated</option>
           </select>
         </div>
       </div>
 
-      {/* Guards Table */}
+      {/* Guards Table - Horizontally Scrollable & Responsive */}
       <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-xs text-left min-w-[1200px]">
             <thead>
-              <tr className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-bold">
-                <th className="py-3 px-4">Guard Code & Name</th>
-                <th className="py-3 px-4">CNIC & Contact</th>
-                <th className="py-3 px-4">Designation</th>
-                <th className="py-3 px-4">Current Site Station</th>
-                <th className="py-3 px-4">Weapon</th>
-                <th className="py-3 px-4 text-right">Basic Salary</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-bold whitespace-nowrap">
+                <th className="py-3 px-3">Date</th>
+                <th className="py-3 px-3">Name</th>
+                <th className="py-3 px-3">Father Name</th>
+                <th className="py-3 px-3">Contact</th>
+                <th className="py-3 px-3">CNIC</th>
+                <th className="py-3 px-3">Cast</th>
+                <th className="py-3 px-3">Height</th>
+                <th className="py-3 px-3">Weight</th>
+                <th className="py-3 px-3">Date of Birth</th>
+                <th className="py-3 px-3 text-right">Basic Salary</th>
+                <th className="py-3 px-3">Current Site Station</th>
+                <th className="py-3 px-3 text-center">Weapon</th>
+                <th className="py-3 px-3 text-center">Status</th>
+                <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
-              {filteredGuards.map((guard) => (
-                <tr key={guard.id} className="hover:bg-slate-900/60 transition-colors">
-                  <td className="py-3 px-4">
-                    <div className="font-bold text-slate-100">{guard.name}</div>
-                    <div className="text-[10px] text-blue-400 font-mono">{guard.guardCode} (S/O {guard.fatherName})</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="font-mono text-slate-300 font-semibold">{guard.cnic}</div>
-                    <div className="text-[10px] text-slate-400">{guard.phone}</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-semibold text-[11px]">
-                      {guard.designation}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    {guard.currentSiteName ? (
-                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                        <MapPin className="w-3.5 h-3.5 shrink-0" />
-                        <span>{guard.currentSiteName}</span>
-                      </div>
-                    ) : (
-                      <span className="text-slate-500 italic">Unassigned (HQ Pool)</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4">
-                    {guard.currentWeaponId ? (
-                      <span className="inline-flex items-center gap-1 bg-red-950 text-red-300 px-2 py-0.5 rounded text-[10px] font-bold border border-red-800/50">
-                        <Shield className="w-3 h-3" />
-                        <span>{guard.currentWeaponId}</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 text-[11px]">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-right font-black font-mono text-slate-200">
-                    {formatPKR(guard.basicSalary)}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        guard.status === 'Active'
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                          : guard.status === 'On Leave'
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
-                          : 'bg-red-950 text-red-300 border border-red-800/60'
-                      }`}
-                    >
-                      {guard.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => setTransferModalGuard(guard)}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs"
-                        title="Transfer Guard to Site"
-                      >
-                        <ArrowRightLeft className="w-3 h-3" />
-                        <span>Transfer</span>
-                      </button>
-                      <button
-                        onClick={() => openEditModal(guard)}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600/80 hover:bg-amber-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs"
-                        title="Edit Guard Profile"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        onClick={() => setDeleteModalGuard(guard)}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs"
-                        title="Delete Guard Record"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
+              {filteredGuards.length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="py-8 text-center text-slate-500 italic">
+                    No guards found matching your search and filter criteria.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredGuards.map((guard) => (
+                  <tr key={guard.id} className="hover:bg-slate-900/60 transition-colors whitespace-nowrap">
+                    {/* 1. Date */}
+                    <td className="py-3 px-3 text-slate-300 font-mono text-[11px]">
+                      {guard.date || guard.joiningDate || '-'}
+                    </td>
+
+                    {/* 2. Name */}
+                    <td className="py-3 px-3">
+                      <div className="font-bold text-slate-100">{guard.name}</div>
+                      <div className="text-[10px] text-blue-400 font-mono">{guard.guardCode}</div>
+                    </td>
+
+                    {/* 3. Father Name */}
+                    <td className="py-3 px-3 text-slate-300">
+                      {guard.fatherName || '-'}
+                    </td>
+
+                    {/* 4. Contact */}
+                    <td className="py-3 px-3 text-slate-300 font-mono text-[11px]">
+                      {guard.contact || guard.phone || '-'}
+                    </td>
+
+                    {/* 5. CNIC */}
+                    <td className="py-3 px-3 font-mono font-semibold text-slate-200 text-[11px]">
+                      {guard.cnic || '-'}
+                    </td>
+
+                    {/* 6. Cast */}
+                    <td className="py-3 px-3 text-slate-300">
+                      {guard.cast || '-'}
+                    </td>
+
+                    {/* 7. Height */}
+                    <td className="py-3 px-3 text-slate-300">
+                      {guard.height || '-'}
+                    </td>
+
+                    {/* 8. Weight */}
+                    <td className="py-3 px-3 text-slate-300 font-mono">
+                      {guard.weight !== undefined && guard.weight !== null && guard.weight !== ''
+                        ? `${guard.weight} kg`
+                        : '-'}
+                    </td>
+
+                    {/* 9. Date of Birth */}
+                    <td className="py-3 px-3 text-slate-300 font-mono text-[11px]">
+                      {guard.dateOfBirth || '-'}
+                    </td>
+
+                    {/* 10. Basic Salary */}
+                    <td className="py-3 px-3 text-right font-black font-mono text-emerald-400">
+                      {formatPKR(guard.basicSalary || 0)}
+                    </td>
+
+                    {/* 11. Current Site Station */}
+                    <td className="py-3 px-3">
+                      {guard.currentSiteName ? (
+                        <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span>{guard.currentSiteName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 italic">Unassigned (HQ Pool)</span>
+                      )}
+                    </td>
+
+                    {/* 12. Weapon */}
+                    <td className="py-3 px-3 text-center">
+                      {guard.currentWeaponId ? (
+                        <span className="inline-flex items-center gap-1 bg-red-950 text-red-300 px-2 py-0.5 rounded text-[10px] font-bold border border-red-800/50">
+                          <Shield className="w-3 h-3" />
+                          <span>{guard.currentWeaponId}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 font-mono text-xs" title="No Weapon Assigned">--</span>
+                      )}
+                    </td>
+
+                    {/* 13. Status */}
+                    <td className="py-3 px-3 text-center">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          guard.status === 'Active'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                            : guard.status === 'On Leave'
+                            ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                            : guard.status === 'Suspended'
+                            ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                            : 'bg-red-950 text-red-300 border border-red-800/60'
+                        }`}
+                      >
+                        {guard.status}
+                      </span>
+                    </td>
+
+                    {/* 14. Actions */}
+                    <td className="py-3 px-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setTransferModalGuard(guard)}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs transition-colors"
+                          title="Transfer Guard to Site"
+                        >
+                          <ArrowRightLeft className="w-3 h-3" />
+                          <span>Transfer</span>
+                        </button>
+                        <button
+                          onClick={() => openEditModal(guard)}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600/80 hover:bg-amber-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs transition-colors"
+                          title="Edit Guard Profile"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => setDeleteModalGuard(guard)}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white rounded font-bold text-[11px] cursor-pointer shadow-xs transition-colors"
+                          title="Delete Guard Record"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal: Register Guard */}
+      {/* Modal: Register Guard Bio-Data & Service Record */}
       {isRegisterOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
-              <Users className="w-5 h-5 text-blue-400" />
-              <span>Register Guard Bio-Data & Service Record</span>
-            </h3>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-400" />
+                <span>Register Guard Bio-Data & Service Record</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRegisterOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
             <form onSubmit={handleRegisterSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                {/* Row 1: Date | Name */}
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Guard Full Name *</label>
+                  <label className="block text-slate-400 font-semibold mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Name *</label>
                   <input
                     type="text"
                     required
@@ -368,8 +506,9 @@ export const GuardsDirectoryView: React.FC = () => {
                   />
                 </div>
 
+                {/* Row 2: Father Name | Contact */}
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Father's Name *</label>
+                  <label className="block text-slate-400 font-semibold mb-1">Father Name *</label>
                   <input
                     type="text"
                     required
@@ -381,40 +520,83 @@ export const GuardsDirectoryView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">CNIC Number (13-digit) *</label>
+                  <label className="block text-slate-400 font-semibold mb-1">Contact *</label>
                   <input
                     type="text"
                     required
-                    value={cnic}
-                    onChange={(e) => setCnic(e.target.value)}
-                    placeholder="33100-XXXXXXX-X"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Mobile Phone *</label>
-                  <input
-                    type="text"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
                     placeholder="03XX-XXXXXXX"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
                   />
                 </div>
 
+                {/* Row 3: CNIC | Cast */}
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Designation *</label>
-                  <select
-                    value={designation}
-                    onChange={(e) => setDesignation(e.target.value as GuardDesignation)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
-                  >
-                    {designations.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+                  <label className="block text-slate-400 font-semibold mb-1">CNIC (13-digit) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={cnic}
+                    onChange={(e) => {
+                      setCnic(e.target.value);
+                      if (registerCnicError) setRegisterCnicError('');
+                    }}
+                    placeholder="33100-0000000-X"
+                    className={`w-full bg-slate-900 border rounded p-2 text-white font-mono font-bold ${
+                      registerCnicError ? 'border-red-500' : 'border-slate-700'
+                    }`}
+                  />
+                  {registerCnicError && (
+                    <p className="text-red-400 text-[11px] mt-1 font-semibold">{registerCnicError}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Cast</label>
+                  <input
+                    type="text"
+                    value={cast}
+                    onChange={(e) => setCast(e.target.value)}
+                    placeholder="e.g. Rajput / Gujjar / Jatt"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                {/* Row 4: Height | Weight */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Height</label>
+                  <input
+                    type="text"
+                    value={height}
+                    onChange={(e) => setHeight(e.target.value)}
+                    placeholder="5 ft 8 in"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Weight (kg)</label>
+                  <input
+                    type="number"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="e.g. 72"
+                    min="30"
+                    max="200"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                {/* Row 5: Date of Birth | Basic Monthly Salary (PKR) */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
                 </div>
 
                 <div>
@@ -424,47 +606,25 @@ export const GuardsDirectoryView: React.FC = () => {
                     required
                     value={basicSalary}
                     onChange={(e) => setBasicSalary(Number(e.target.value))}
+                    min="0"
+                    placeholder="40000"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono font-bold"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Blood Group</label>
-                  <select
-                    value={bloodGroup}
-                    onChange={(e) => setBloodGroup(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  >
-                    {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Joining Date</label>
-                  <input
-                    type="date"
-                    value={joiningDate}
-                    onChange={(e) => setJoiningDate(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  />
-                </div>
-
+                {/* Row 6: Permanent Residential Address (full width) */}
                 <div className="sm:col-span-2">
                   <label className="block text-slate-400 font-semibold mb-1">Permanent Residential Address</label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={3}
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Village / Chak / Street Address..."
+                    placeholder="Village / Chak / House / Street Address..."
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
                   />
                 </div>
-              </div>
 
-              {/* Initial Site & Weapon Allocation */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                {/* Row 7: Initial Site Station | Assign Weapon (Optional) */}
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Initial Site Station</label>
                   <select
@@ -502,15 +662,242 @@ export const GuardsDirectoryView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsRegisterOpen(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold rounded-lg cursor-pointer"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-md cursor-pointer"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-md cursor-pointer transition-colors"
                 >
                   Register Guard Record
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Guard Profile */}
+      {editModalGuard && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-amber-400" />
+                <span>Edit Guard Profile: {editModalGuard.name} ({editModalGuard.guardCode})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditModalGuard(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                {/* Row 1: Date | Name */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
+                  />
+                </div>
+
+                {/* Row 2: Father Name | Contact */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Father Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFatherName}
+                    onChange={(e) => setEditFatherName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Contact *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editContact}
+                    onChange={(e) => setEditContact(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                {/* Row 3: CNIC | Cast */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">CNIC (13-digit) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCnic}
+                    onChange={(e) => {
+                      setEditCnic(e.target.value);
+                      if (editCnicError) setEditCnicError('');
+                    }}
+                    placeholder="33100-0000000-X"
+                    className={`w-full bg-slate-900 border rounded p-2 text-white font-mono font-bold ${
+                      editCnicError ? 'border-red-500' : 'border-slate-700'
+                    }`}
+                  />
+                  {editCnicError && (
+                    <p className="text-red-400 text-[11px] mt-1 font-semibold">{editCnicError}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Cast</label>
+                  <input
+                    type="text"
+                    value={editCast}
+                    onChange={(e) => setEditCast(e.target.value)}
+                    placeholder="e.g. Rajput / Gujjar / Jatt"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                {/* Row 4: Height | Weight */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Height</label>
+                  <input
+                    type="text"
+                    value={editHeight}
+                    onChange={(e) => setEditHeight(e.target.value)}
+                    placeholder="5 ft 8 in"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Weight (kg)</label>
+                  <input
+                    type="number"
+                    value={editWeight}
+                    onChange={(e) => setEditWeight(e.target.value)}
+                    placeholder="e.g. 72"
+                    min="30"
+                    max="200"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                {/* Row 5: Date of Birth | Basic Monthly Salary (PKR) */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={editDateOfBirth}
+                    onChange={(e) => setEditDateOfBirth(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Basic Monthly Salary (PKR) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={editBasicSalary}
+                    onChange={(e) => setEditBasicSalary(Number(e.target.value))}
+                    min="0"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono font-bold"
+                  />
+                </div>
+
+                {/* Row 6: Permanent Residential Address (full width) */}
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-400 font-semibold mb-1">Permanent Residential Address</label>
+                  <textarea
+                    rows={3}
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    placeholder="Village / Chak / House / Street Address..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                {/* Row 7: Initial Site Station | Assign Weapon (Optional) */}
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Current Site Station</label>
+                  <select
+                    value={editSiteId}
+                    onChange={(e) => setEditSiteId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  >
+                    <option value="">-- Leave in HQ Reserve Pool --</option>
+                    {sites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.siteName} ({s.clientName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Assign Weapon (Optional)</label>
+                  <select
+                    value={editWeaponId}
+                    onChange={(e) => setEditWeaponId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                  >
+                    <option value="">-- No Weapon Assigned --</option>
+                    {weapons.map((w) => (
+                      <option key={w.id} value={w.weaponCode}>
+                        {w.weaponCode} - {w.weaponType} ({w.serialNumber})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Row 8: Duty Status */}
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-400 font-semibold mb-1">Duty Status *</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as GuardStatus)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
+                  >
+                    <option value="Active">Active Duty</option>
+                    <option value="On Leave">On Leave</option>
+                    <option value="Suspended">Suspended</option>
+                    <option value="Terminated">Terminated / Resigned</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditModalGuard(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shadow-md cursor-pointer transition-colors"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -522,13 +909,22 @@ export const GuardsDirectoryView: React.FC = () => {
       {transferModalGuard && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ArrowRightLeft className="w-5 h-5 text-blue-400" />
-              <span>Transfer Guard: {transferModalGuard.name} ({transferModalGuard.guardCode})</span>
-            </h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-blue-400" />
+                <span>Transfer Guard: {transferModalGuard.name} ({transferModalGuard.guardCode})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setTransferModalGuard(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             <p className="text-xs text-slate-300">
-              Current Station: <strong className="text-emerald-400">{transferModalGuard.currentSiteName || 'Headquarters'}</strong>
+              Current Station: <strong className="text-emerald-400">{transferModalGuard.currentSiteName || 'Headquarters Reserve Pool'}</strong>
             </p>
 
             <form onSubmit={handleTransferSubmit} className="space-y-3 text-xs">
@@ -575,190 +971,19 @@ export const GuardsDirectoryView: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setTransferModalGuard(null)}
-                  className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg cursor-pointer shadow-md"
-                >
-                  Execute Transfer & Log History
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Edit Guard */}
-      {editModalGuard && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Edit2 className="w-5 h-5 text-amber-400" />
-                <span>Edit Guard Profile: {editModalGuard.name} ({editModalGuard.guardCode})</span>
-              </div>
-            </h3>
-
-            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Guard Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Father's Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editFatherName}
-                    onChange={(e) => setEditFatherName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">CNIC Number (13-digit) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCnic}
-                    onChange={(e) => setEditCnic(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Mobile Phone *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Designation *</label>
-                  <select
-                    value={editDesignation}
-                    onChange={(e) => setEditDesignation(e.target.value as GuardDesignation)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
-                  >
-                    {designations.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Basic Monthly Salary (PKR) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={editBasicSalary}
-                    onChange={(e) => setEditBasicSalary(Number(e.target.value))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Duty Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as GuardStatus)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
-                  >
-                    <option value="Active">Active Duty</option>
-                    <option value="On Leave">On Leave</option>
-                    <option value="Terminated">Terminated / Resigned</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Blood Group</label>
-                  <select
-                    value={editBloodGroup}
-                    onChange={(e) => setEditBloodGroup(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  >
-                    {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-400 font-semibold mb-1">Permanent Residential Address</label>
-                  <input
-                    type="text"
-                    value={editAddress}
-                    onChange={(e) => setEditAddress(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Emergency Contact Person</label>
-                  <input
-                    type="text"
-                    value={editEmergencyContactName}
-                    onChange={(e) => setEditEmergencyContactName(e.target.value)}
-                    placeholder="e.g. Brother / Relative"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Emergency Contact Phone</label>
-                  <input
-                    type="text"
-                    value={editEmergencyContactPhone}
-                    onChange={(e) => setEditEmergencyContactPhone(e.target.value)}
-                    placeholder="03XX-XXXXXXX"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-400 font-semibold mb-1">Internal Notes / Verification Remarks</label>
-                  <textarea
-                    rows={2}
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    placeholder="Police verification remarks, special training, etc."
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                  />
-                </div>
-              </div>
-
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setEditModalGuard(null)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold rounded-lg cursor-pointer"
+                  onClick={() => setTransferModalGuard(null)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shadow-md cursor-pointer"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg cursor-pointer shadow-md transition-colors"
                 >
-                  Save Changes
+                  Execute Transfer & Log History
                 </button>
               </div>
             </form>
@@ -806,21 +1031,21 @@ export const GuardsDirectoryView: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300">
-              Are you sure you want to permanently remove <strong>{deleteModalGuard.name}</strong> from the Mountain Security personnel database?
+              Are you sure you want to permanently remove <strong>{deleteModalGuard.name}</strong> from the personnel database?
             </p>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setDeleteModalGuard(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer text-xs transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Yes, Delete Guard</span>
