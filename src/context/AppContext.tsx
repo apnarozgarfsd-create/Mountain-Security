@@ -278,7 +278,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'MOUNTAIN_SECURITY_SGMS_DATA_V1';
+const LOCAL_STORAGE_KEY = 'MOUNTAIN_SECURITY_SGMS_DATA_V2';
 
 const initialSecuritySettings: RoleSecuritySettings = {
   requirePasswordOnSwitch: true,
@@ -289,9 +289,13 @@ const initialSecuritySettings: RoleSecuritySettings = {
 // Safe synchronous loader for LocalStorage on startup
 const getStoredInitialState = (): any => {
   try {
-    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+    if (typeof localStorage !== 'undefined') {
+      // Purge legacy demo data storage key so browser does not load old demo records
+      localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V1');
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
     }
   } catch (e) {
     console.error('Error loading initial saved state from localStorage:', e);
