@@ -25,7 +25,7 @@ export const DataManagementView: React.FC = () => {
     currentUserRole,
     getDataSummaryCounts,
     resetToCleanInitialDataset,
-    resetSystemDataToZero,
+    resetAllTransactionData,
     exportDataJson,
     logAudit,
   } = useApp();
@@ -38,11 +38,11 @@ export const DataManagementView: React.FC = () => {
   const [demoResetConfirmInput, setDemoResetConfirmInput] = useState('');
   const [demoSuccessNotice, setDemoSuccessNotice] = useState<string | null>(null);
 
-  // START FROM ZERO (Reset System Data) 2-step Modal
-  const [isZeroStep1Open, setIsZeroStep1Open] = useState(false);
-  const [isZeroStep2Open, setIsZeroStep2Open] = useState(false);
-  const [zeroConfirmInput, setZeroConfirmInput] = useState('');
-  const [zeroSuccessNotice, setZeroSuccessNotice] = useState<string | null>(null);
+  // RESET ALL TRANSACTION DATA Modal
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState('');
+  const [resetSuccessNotice, setResetSuccessNotice] = useState<string | null>(null);
+  const [resetErrorNotice, setResetErrorNotice] = useState<string | null>(null);
 
   // Download Manual Backup
   const handleDownloadBackup = () => {
@@ -81,28 +81,33 @@ export const DataManagementView: React.FC = () => {
     setTimeout(() => setDemoSuccessNotice(null), 6000);
   };
 
-  // START FROM ZERO Handlers
-  const handleOpenZeroStep1 = () => {
+  // RESET ALL TRANSACTION DATA Handlers
+  const handleOpenResetModal = () => {
     if (!isSuperAdmin) return;
-    setZeroConfirmInput('');
-    setIsZeroStep1Open(true);
+    setResetConfirmInput('');
+    setResetErrorNotice(null);
+    setIsResetModalOpen(true);
   };
 
-  const handleProceedToZeroStep2 = (e: React.FormEvent) => {
+  const handleExecuteResetAllData = (e: React.FormEvent) => {
     e.preventDefault();
-    if (zeroConfirmInput.trim().toUpperCase() !== 'START FROM ZERO') return;
-    setIsZeroStep1Open(false);
-    setIsZeroStep2Open(true);
-  };
+    if (resetConfirmInput.trim() !== 'DELETE ALL DATA') {
+      return;
+    }
 
-  const handleExecuteZeroFinal = () => {
-    const res = resetSystemDataToZero();
-    setIsZeroStep2Open(false);
-    if (res.success) {
-      setZeroSuccessNotice(
-        'System has been successfully reset to ZERO! An automatic safety backup JSON has been downloaded to your computer. All transaction records, vouchers, ledger balances, invoices, and financial reports now stand at 0.00 while all Master Data and Chart of Accounts are preserved.'
-      );
-      setTimeout(() => setZeroSuccessNotice(null), 10000);
+    try {
+      const res = resetAllTransactionData();
+      if (res && res.success) {
+        setIsResetModalOpen(false);
+        setResetSuccessNotice(
+          'All transaction and operational entries have been permanently deleted across all modules. Chart of Accounts, Master Profiles, and System Configurations are preserved with PKR 0.00 balances. A full safety backup JSON file was generated.'
+        );
+        setTimeout(() => setResetSuccessNotice(null), 10000);
+      } else {
+        setResetErrorNotice(res?.error || 'Failed to complete transaction reset.');
+      }
+    } catch (err: any) {
+      setResetErrorNotice(err?.message || 'Error occurred while resetting data.');
     }
   };
 
@@ -140,11 +145,18 @@ export const DataManagementView: React.FC = () => {
         </button>
       </div>
 
-      {/* Success Alerts */}
-      {zeroSuccessNotice && (
+      {/* Success & Error Alerts */}
+      {resetSuccessNotice && (
         <div className="p-4 rounded-xl border bg-emerald-950/90 border-emerald-700 text-emerald-100 text-xs flex items-start gap-3 animate-in fade-in shadow-lg">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-          <p className="leading-relaxed font-semibold">{zeroSuccessNotice}</p>
+          <p className="leading-relaxed font-semibold">{resetSuccessNotice}</p>
+        </div>
+      )}
+
+      {resetErrorNotice && (
+        <div className="p-4 rounded-xl border bg-red-950/90 border-red-700 text-red-100 text-xs flex items-start gap-3 animate-in fade-in shadow-lg">
+          <AlertOctagon className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <p className="leading-relaxed font-semibold">{resetErrorNotice}</p>
         </div>
       )}
 
@@ -161,7 +173,7 @@ export const DataManagementView: React.FC = () => {
           <div>
             <p className="font-bold">Access Restricted</p>
             <p className="mt-0.5 text-amber-300/80">
-              Only the <strong>Super Admin</strong> role has permission to execute Clean Resets or Start From Zero operations. Switch to Super Admin in the role selector if you have appropriate authorization.
+              Only the <strong>Super Admin</strong> role has permission to execute Clean Resets or Reset All Transaction Data operations. Switch to Super Admin in the role selector if you have appropriate authorization.
             </p>
           </div>
         </div>
@@ -264,7 +276,7 @@ export const DataManagementView: React.FC = () => {
         </div>
       </div>
 
-      {/* PRIMARY FEATURE: START FROM ZERO (RESET SYSTEM DATA) */}
+      {/* PRIMARY FEATURE: RESET ALL TRANSACTION DATA */}
       <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-2 border-red-800/70 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
           <div className="flex items-center gap-3.5">
@@ -274,25 +286,25 @@ export const DataManagementView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-tight font-display">
-                  RESET SYSTEM DATA • START FROM ZERO
+                  RESET ALL TRANSACTION DATA
                 </h2>
                 <span className="px-2 py-0.5 bg-red-950 text-red-300 border border-red-800 rounded-full text-[10px] font-bold tracking-wider uppercase">
-                  Admin Only
+                  Super Admin Only
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Clear all existing transactional, accounting, and operational entries to begin accounting and operations from clean zero.
+                Remove ALL operational and transactional entries from EVERY module/tab and return the software to a clean fresh-data state.
               </p>
             </div>
           </div>
 
           <button
             disabled={!isSuperAdmin}
-            onClick={handleOpenZeroStep1}
+            onClick={handleOpenResetModal}
             className="py-3 px-5 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 hover:shadow-red-950/50"
           >
             <Trash2 className="w-4 h-4" />
-            <span>Start From Zero (Reset)...</span>
+            <span>RESET ALL TRANSACTION DATA</span>
           </button>
         </div>
 
@@ -387,122 +399,84 @@ export const DataManagementView: React.FC = () => {
         </p>
       </div>
 
-      {/* MODAL 1: START FROM ZERO - STEP 1 CONFIRMATION */}
-      {isZeroStep1Open && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-red-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
-              <div className="p-3 bg-red-950/90 border border-red-800 text-red-400 rounded-xl">
-                <AlertOctagon className="w-6 h-6" />
+      {/* MODAL: RESET ALL TRANSACTION DATA CONFIRMATION */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border-2 border-red-600 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3.5 pb-3 border-b border-slate-800">
+              <div className="p-3 bg-red-950/90 border border-red-800 text-red-400 rounded-xl animate-pulse">
+                <AlertOctagon className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base font-black text-red-400 uppercase">
-                  Step 1: Authorization to Reset System Data
+                <h3 className="text-base font-black text-red-400 uppercase tracking-tight">
+                  RESET ALL TRANSACTION DATA
                 </h3>
-                <p className="text-xs text-slate-400">Clear all transactional data & start from zero</p>
+                <p className="text-xs text-slate-400">Super Admin Authorization & Safety Verification</p>
               </div>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-              <p>
-                You are about to clear <strong>ALL</strong> transactional, financial, and operational entries from the system.
+            {/* Exact Warning Dialog Required */}
+            <div className="bg-red-950/50 border border-red-800/80 rounded-xl p-4 text-xs space-y-3">
+              <p className="font-black text-red-300 tracking-wider uppercase text-[11px] flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-red-400" />
+                <span>WARNING:</span>
               </p>
-
-              <div className="bg-red-950/40 border border-red-900/60 rounded-xl p-3 space-y-1.5 text-[11px] text-red-200">
-                <p className="font-bold flex items-center gap-1.5 text-red-300">
-                  <ShieldAlert className="w-4 h-4" />
-                  <span>Important Confirmation Details:</span>
+              <div className="text-slate-100 font-medium leading-relaxed space-y-2">
+                <p>
+                  This will permanently delete <strong>ALL</strong> operational and transactional data from the system.
                 </p>
-                <ul className="list-disc pl-4 space-y-1">
-                  <li>All vouchers, journals, ledger balances, and opening balances will become 0.</li>
-                  <li>All invoices, payment records, salary slips, and attendance will be removed.</li>
-                  <li>Master records (Chart of Accounts, Clients, Sites, Guards, Weapons, Products) are preserved.</li>
-                  <li>An automatic complete JSON backup will download when confirmed.</li>
-                </ul>
+                <p>
+                  Accounts, master settings, users, permissions, categories and configuration will be preserved.
+                </p>
+                <p className="font-bold text-red-200">
+                  This action cannot be undone.
+                </p>
+                <p className="font-bold text-white pt-1">
+                  Are you sure you want to continue?
+                </p>
               </div>
             </div>
 
-            <form onSubmit={handleProceedToZeroStep2} className="space-y-4 text-xs">
+            {resetErrorNotice && (
+              <div className="p-3 rounded-lg bg-red-950 border border-red-700 text-red-200 text-xs">
+                {resetErrorNotice}
+              </div>
+            )}
+
+            <form onSubmit={handleExecuteResetAllData} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1.5">
-                  To continue, type <strong className="text-red-400 font-mono font-black">START FROM ZERO</strong> below:
+                  Type <strong className="text-red-400 font-mono font-black select-all">DELETE ALL DATA</strong> to enable confirmation:
                 </label>
                 <input
                   type="text"
                   required
-                  value={zeroConfirmInput}
-                  onChange={(e) => setZeroConfirmInput(e.target.value)}
-                  placeholder="Type START FROM ZERO"
-                  className="w-full bg-slate-950 border border-red-900/80 rounded-xl p-3 text-white font-mono font-bold tracking-wider placeholder:text-slate-600 focus:border-red-500 focus:outline-none"
+                  autoFocus
+                  value={resetConfirmInput}
+                  onChange={(e) => setResetConfirmInput(e.target.value)}
+                  placeholder="Type DELETE ALL DATA"
+                  className="w-full bg-slate-950 border-2 border-red-900/80 rounded-xl p-3 text-white font-mono font-bold tracking-wider placeholder:text-slate-600 focus:border-red-500 focus:outline-hidden"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsZeroStep1Open(false)}
+                  onClick={() => setIsResetModalOpen(false)}
                   className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={zeroConfirmInput.trim().toUpperCase() !== 'START FROM ZERO'}
-                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  disabled={resetConfirmInput.trim() !== 'DELETE ALL DATA'}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                 >
-                  Proceed to Final Confirmation →
+                  <Trash2 className="w-4 h-4" />
+                  <span>Confirm Reset All Data</span>
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: START FROM ZERO - STEP 2 FINAL CONFIRMATION */}
-      {isZeroStep2Open && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-red-600 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3.5 pb-3 border-b border-slate-800">
-              <div className="p-3 bg-red-950/90 border border-red-800 text-red-400 rounded-xl animate-pulse">
-                <AlertOctagon className="w-7 h-7" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-red-400 uppercase">
-                  Final Authorization
-                </h3>
-                <p className="text-xs text-slate-400">Download backup & reset data to zero</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-xs text-slate-200">
-              <p className="font-semibold text-white leading-relaxed">
-                Clicking the button below will immediately:
-              </p>
-              <ol className="list-decimal pl-4 space-y-1.5 text-slate-300 leading-relaxed">
-                <li>Download your complete safety JSON backup file.</li>
-                <li>Reset all transactions, journals, vouchers, and opening balances to 0.00.</li>
-                <li>Clear invoices, salary slips, attendance, and stock logs.</li>
-                <li>Preserve all Master Data and Chart of Accounts for clean data entry.</li>
-              </ol>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsZeroStep2Open(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
-              >
-                No, Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteZeroFinal}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl cursor-pointer transition-all flex items-center gap-2"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Confirm & Reset System to Zero</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
