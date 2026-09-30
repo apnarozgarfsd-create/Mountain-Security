@@ -45,6 +45,7 @@ export const OpeningBalancesView: React.FC = () => {
     currentUserRole,
     saveOpeningBalance,
     clearOpeningBalance,
+    resetOpeningBalances,
     postOpeningBalances,
     lockOpeningBalances,
     unlockOpeningBalances,
@@ -76,6 +77,7 @@ export const OpeningBalancesView: React.FC = () => {
   const [editReason, setEditReason] = useState<string>('');
 
   // Confirmation Modals State
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isPostConfirmOpen, setIsPostConfirmOpen] = useState(false);
   const [isCarryForwardConfirmOpen, setIsCarryForwardConfirmOpen] = useState(false);
   const [isLockConfirmOpen, setIsLockConfirmOpen] = useState(false);
@@ -120,8 +122,8 @@ export const OpeningBalancesView: React.FC = () => {
         balanceType,
         debit,
         credit,
-        date: ob?.openingDate || currentBatch?.startDate || '2026-07-01',
-        reference: ob?.reference || currentBatch?.voucherNo || 'OB-0001',
+        date: ob?.openingDate || currentBatch?.startDate || `${currentFiscalYear.slice(0, 4)}-07-01`,
+        reference: ob?.reference || currentBatch?.voucherNo || (batchStatus === 'Posted' ? 'OB-0001' : ''),
         notes: ob?.notes || '',
         status: ob?.status || batchStatus,
       };
@@ -262,21 +264,13 @@ export const OpeningBalancesView: React.FC = () => {
       return;
     }
 
-    const reason = batchStatus === 'Posted' ? prompt('Enter reason for clearing this posted opening balance:') : undefined;
-    if (batchStatus === 'Posted' && !reason) {
-      setNotice({
-        type: 'warning',
-        message: 'Clear operation cancelled: A reason is required for posted opening balances.',
-      });
-      setTimeout(() => setNotice(null), 4000);
-      return;
-    }
+    const reason = batchStatus === 'Posted' ? 'Cleared posted opening balance to PKR 0' : undefined;
 
-    const res = clearOpeningBalance(acc.id, currentFiscalYear, reason || undefined);
+    const res = clearOpeningBalance(acc.id, currentFiscalYear, reason);
     if (res.success) {
       setNotice({
         type: 'success',
-        message: `Cleared opening balance for ${acc.accountCode} - ${acc.accountName}.`,
+        message: `Cleared opening balance for ${acc.accountCode} - ${acc.accountName} to PKR 0.`,
       });
       setTimeout(() => setNotice(null), 3000);
     } else {
@@ -285,6 +279,25 @@ export const OpeningBalancesView: React.FC = () => {
         message: res.error || 'Failed to clear opening balance.',
       });
       setTimeout(() => setNotice(null), 4000);
+    }
+  };
+
+  // Reset all opening balances for current fiscal year
+  const handleConfirmReset = () => {
+    setIsResetConfirmOpen(false);
+    const res = resetOpeningBalances(currentFiscalYear, `Opening balances reset for FY ${currentFiscalYear}`);
+    if (res.success) {
+      setNotice({
+        type: 'success',
+        message: `All opening balances for FY ${currentFiscalYear} successfully reset to PKR 0. Account masters preserved and linked opening voucher removed.`,
+      });
+      setTimeout(() => setNotice(null), 5000);
+    } else {
+      setNotice({
+        type: 'error',
+        message: res.error || 'Failed to reset opening balances.',
+      });
+      setTimeout(() => setNotice(null), 5000);
     }
   };
 
@@ -617,8 +630,25 @@ export const OpeningBalancesView: React.FC = () => {
           </button>
         </div>
 
-        {/* Action Pipeline: Carry Forward, Post, Lock/Unlock */}
+        {/* Action Pipeline: Carry Forward, Post, Lock/Unlock, Reset */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Reset / Clear All Opening Balances Button */}
+          {canManage && (
+            <button
+              onClick={() => setIsResetConfirmOpen(true)}
+              disabled={batchStatus === 'Locked' && !isSuperAdmin}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                batchStatus === 'Locked' && !isSuperAdmin
+                  ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+                  : 'bg-red-950/80 hover:bg-red-900 text-red-200 hover:text-white border border-red-800'
+              }`}
+              title={`Clear and reset all opening balances for FY ${currentFiscalYear} to PKR 0`}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+              <span>Reset Opening Balances</span>
+            </button>
+          )}
+
           {/* Carry Forward Previous Year */}
           {canManage && batchStatus !== 'Locked' && (
             <button
@@ -1353,6 +1383,70 @@ export const OpeningBalancesView: React.FC = () => {
                 className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer"
               >
                 Confirm Unlock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM MODAL: RESET ALL OPENING BALANCES */}
+      {isResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-400">
+              <span className="p-2 bg-red-950/80 border border-red-800 rounded-xl">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-white">Reset Opening Balances</h3>
+                <p className="text-xs text-slate-400">Fiscal Year: {currentFiscalYear}</p>
+              </div>
+            </div>
+
+            {/* Mandatory User Confirmation Sentence */}
+            <div className="bg-red-950/40 border border-red-800/90 rounded-xl p-3 text-xs text-red-200 font-semibold leading-relaxed">
+              This will clear all opening balances for FY {currentFiscalYear}. Account masters and unrelated transactions will not be deleted. Continue?
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Total Opening Debit:</span>
+                <span className="font-mono font-bold text-emerald-400">{formatPKR(totalDebit)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Total Opening Credit:</span>
+                <span className="font-mono font-bold text-blue-400">{formatPKR(totalCredit)}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-800">
+                <span className="text-slate-400">Linked OB Voucher:</span>
+                <span className="font-mono text-red-300 font-bold">
+                  {currentBatch?.voucherNo || (batchStatus === 'Posted' ? 'OB-0001' : 'None')} (Will be removed)
+                </span>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-400 space-y-1 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+              <div className="font-bold text-slate-300">Safe Operational Reset:</div>
+              <ul className="list-disc pl-4 space-y-0.5 text-slate-400">
+                <li>Opening Dr and Opening Cr set to PKR 0 for all {accounts.length} accounts.</li>
+                <li>Live opening balance set to PKR 0.</li>
+                <li>Chart of Accounts masters, clients, sites, and guards remain untouched.</li>
+                <li>Normal vouchers (RV, PV, CV), salary slips, and invoices remain intact.</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsResetConfirmOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer"
+              >
+                Confirm & Reset All
               </button>
             </div>
           </div>

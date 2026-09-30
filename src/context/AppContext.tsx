@@ -115,6 +115,7 @@ interface AppContextType {
     reason?: string;
   }) => { success: boolean; error?: string };
   clearOpeningBalance: (accountId: string, fiscalYear?: string, reason?: string) => { success: boolean; error?: string };
+  resetOpeningBalances: (fiscalYear?: string, reason?: string) => { success: boolean; error?: string };
   postOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string; voucher?: Voucher };
   lockOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string };
   unlockOpeningBalances: (fiscalYear?: string) => { success: boolean; error?: string };
@@ -268,7 +269,8 @@ interface AppContextType {
   getDataSummaryCounts: () => DataSummaryCounts;
   resetToCleanInitialDataset: () => void;
   deleteAllOperationalData: () => void;
-  resetSystemDataToZero: () => { success: boolean; backupJson: string };
+  resetAllTransactionData: () => { success: boolean; error?: string; backupJson?: string };
+  resetSystemDataToZero: () => { success: boolean; backupJson: string; error?: string };
   previewMergeBackupJson: (jsonString: string) => MergePreviewSummary | null;
   executeMergeBackup: (jsonString: string, conflictResolutions?: Record<string, 'keep_existing' | 'use_incoming'>) => { newRecordsCount: number; duplicateRecordsCount: number; conflictsCount: number };
   logAudit: (action: string, module: string, recordReference: string, details: string) => void;
@@ -404,7 +406,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : initialParties)
   );
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(
-    () => (Array.isArray(initialStored?.cashTransactions) && initialStored.cashTransactions.length > 0
+    () => (Array.isArray(initialStored?.cashTransactions)
       ? initialStored.cashTransactions
       : initialCashTransactions)
   );
@@ -1758,34 +1760,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (v.voucherNo === voucherNo || (v.referenceNo && v.referenceNo.includes(`OB-${fy}`))) {
           const hasEntry = v.entries.some((e) => isMatch(e.accountId, e.accountCode));
           let updatedEntries: VoucherEntry[] = [];
-          if (hasEntry) {
-            updatedEntries = v.entries.map((e) => {
-              if (isMatch(e.accountId, e.accountCode)) {
-                return {
-                  ...e,
+          if (newAmount > 0) {
+            if (hasEntry) {
+              updatedEntries = v.entries.map((e) => {
+                if (isMatch(e.accountId, e.accountCode)) {
+                  return {
+                    ...e,
+                    accountId: acc.id,
+                    accountCode: acc.accountCode,
+                    accountName: acc.accountName,
+                    debit: newType === 'Debit' ? newAmount : 0,
+                    credit: newType === 'Credit' ? newAmount : 0,
+                    narration: `Opening Balance - ${acc.accountName}`,
+                  };
+                }
+                return e;
+              });
+            } else {
+              updatedEntries = [
+                ...v.entries,
+                {
+                  id: `VENT-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                   accountId: acc.id,
                   accountCode: acc.accountCode,
                   accountName: acc.accountName,
                   debit: newType === 'Debit' ? newAmount : 0,
                   credit: newType === 'Credit' ? newAmount : 0,
                   narration: `Opening Balance - ${acc.accountName}`,
-                };
-              }
-              return e;
-            });
+                },
+              ];
+            }
           } else {
-            updatedEntries = [
-              ...v.entries,
-              {
-                id: `VENT-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                accountId: acc.id,
-                accountCode: acc.accountCode,
-                accountName: acc.accountName,
-                debit: newType === 'Debit' ? newAmount : 0,
-                credit: newType === 'Credit' ? newAmount : 0,
-                narration: `Opening Balance - ${acc.accountName}`,
-              },
-            ];
+            // Amount is 0: remove entry from the opening voucher
+            updatedEntries = v.entries.filter((e) => !isMatch(e.accountId, e.accountCode));
           }
           const totDebit = updatedEntries.reduce((s, e) => s + (Number(e.debit) || 0), 0);
           const totCredit = updatedEntries.reduce((s, e) => s + (Number(e.credit) || 0), 0);
@@ -1866,15 +1873,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingOb = openingBalances.find(
       (ob) => ob.fiscalYear === fy && isMatch(ob.accountId, ob.accountCode)
     );
-    if (!existingOb && !acc?.openingBalance) return { success: true };
-
-    if (batchStatus === 'Posted' && !reason) {
-      return { success: false, error: 'A reason for change is required to clear a posted opening balance.' };
-    }
+    if (!existingOb && (!acc || Number(acc.openingBalance) === 0)) return { success: true };
 
     let newAudits = openingBalanceAudits;
-    const oldAmt = existingOb ? existingOb.amount : (acc?.openingBalance || 0);
-    const oldTyp = existingOb ? existingOb.balanceType : (acc?.openingBalanceType || 'Debit');
+    const oldAmt = existingOb ? Number(existingOb.amount) || 0 : (Number(acc?.openingBalance) || 0);
+    const oldTyp = existingOb ? existingOb.balanceType : (acc?.openingBalanceType || (acc?.category === 'Asset' || acc?.category === 'Expense' ? 'Debit' : 'Credit'));
     if (oldAmt > 0) {
       const auditEntry: OpeningBalanceAudit = {
         id: `AUD-OB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1888,15 +1891,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newAmount: 0,
         oldType: oldTyp,
         newType: oldTyp,
-        reason: reason || 'Cleared opening balance',
+        reason: reason || 'Cleared opening balance to PKR 0',
       };
       newAudits = [auditEntry, ...openingBalanceAudits];
       setOpeningBalanceAudits(newAudits);
     }
 
-    const newOpeningBalances = openingBalances.filter(
-      (b) => !(b.fiscalYear === fy && isMatch(b.accountId, b.accountCode))
-    );
+    // Keep an explicit zero-balance OpeningBalance record so that fallback to account master never restores non-zero values
+    const zeroOb: OpeningBalance = {
+      id: existingOb ? existingOb.id : `OB-${fy}-${acc?.accountCode || accountId}`,
+      fiscalYear: fy,
+      accountId: acc ? acc.id : accountId,
+      accountCode: acc ? acc.accountCode : (existingOb?.accountCode || accountId),
+      accountName: acc ? acc.accountName : (existingOb?.accountName || accountId),
+      category: acc ? acc.category : (existingOb?.category || 'Asset'),
+      openingDate: existingOb?.openingDate || (batch?.startDate || `${fy.slice(0, 4)}-07-01`),
+      balanceType: oldTyp,
+      amount: 0,
+      debit: 0,
+      credit: 0,
+      reference: '',
+      notes: 'Opening balance cleared to 0',
+      status: 'Draft',
+      createdBy: existingOb?.createdBy || currentUserRole,
+      createdAt: existingOb?.createdAt || new Date().toLocaleString('sv-SE').replace('T', ' '),
+      updatedBy: currentUserRole,
+      updatedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    const newOpeningBalances = [
+      ...openingBalances.filter((b) => !(b.fiscalYear === fy && isMatch(b.accountId, b.accountCode))),
+      zeroOb,
+    ];
     setOpeningBalances(newOpeningBalances);
 
     let newAccounts = accounts;
@@ -1962,6 +1988,172 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToPersist));
     } catch (e) {
       console.error('Direct localStorage persistence error in clearOpeningBalance:', e);
+    }
+
+    return { success: true };
+  };
+
+  const resetOpeningBalances = (
+    fiscalYear: string = currentFiscalYear,
+    reason?: string
+  ): { success: boolean; error?: string } => {
+    if (currentUserRole === 'Viewer' || currentUserRole === 'Site Supervisor') {
+      return {
+        success: false,
+        error: 'Permission denied. Only Accountants or Super Admins can reset opening balances.',
+      };
+    }
+
+    const fy = fiscalYear || currentFiscalYear;
+    const batch = openingBatches.find((b) => b.fiscalYear === fy);
+    const batchStatus = batch ? batch.status : 'Draft';
+
+    if (batchStatus === 'Locked' && currentUserRole !== 'Super Admin') {
+      return {
+        success: false,
+        error: `Opening balances for Fiscal Year ${fy} are locked. Only Super Admin can reset locked balances.`,
+      };
+    }
+
+    // 1. Identify and remove any opening balance vouchers created by this module for this fiscal year
+    const isObVoucherForThisFy = (v: Voucher) => {
+      if (batch?.voucherId && v.id === batch.voucherId) return true;
+      if (batch?.voucherNo && v.voucherNo === batch.voucherNo) return true;
+      if (v.voucherNo === 'OB-0001' && fy === '2026-27') return true;
+      if (v.id === 'VOUCH-OB-001' && fy === '2026-27') return true;
+      if (v.referenceNo && (v.referenceNo === `OB-${fy}` || v.referenceNo === `OB-${fy.slice(0, 4)}`)) return true;
+      if (v.id && (v.id === `VOUCH-OB-${fy}` || v.id === `VOUCH-OB-${fy.slice(0, 4)}`)) return true;
+      if (v.narration && v.narration.includes(`Fiscal Year ${fy}`) && v.narration.toLowerCase().includes('opening balance')) return true;
+      return false;
+    };
+
+    // Filter out opening vouchers for this fiscal year while strictly preserving unrelated operational vouchers (RV, PV, CV, etc.)
+    const newVouchers = vouchers.filter((v) => !isObVoucherForThisFy(v));
+
+    // 2. Set Opening Debit and Opening Credit to 0 on every Account in Chart of Accounts
+    // Recalculate current live balance purely based on remaining operational vouchers without opening balance
+    const newAccounts = accounts.map((acc) => {
+      let operationalDelta = 0;
+      newVouchers.forEach((v) => {
+        if (v.status !== 'Posted') return;
+        v.entries.forEach((e) => {
+          if (
+            e.accountId === acc.id ||
+            e.accountCode === acc.accountCode ||
+            e.accountId === `ACC-${acc.accountCode}` ||
+            (acc.id && e.accountId === acc.id.replace(/^ACC-/, ''))
+          ) {
+            const deb = Number(e.debit) || 0;
+            const cred = Number(e.credit) || 0;
+            if (acc.category === 'Asset' || acc.category === 'Expense') {
+              operationalDelta += (deb - cred);
+            } else {
+              operationalDelta += (cred - deb);
+            }
+          }
+        });
+      });
+
+      return {
+        ...acc,
+        openingBalance: 0,
+        openingBalanceType: (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit') as BalanceType,
+        currentBalance: operationalDelta,
+      };
+    });
+
+    // 3. For this fiscal year, set all OpeningBalance records to 0 amount, 0 debit, 0 credit, Draft status
+    const otherYearsOB = openingBalances.filter((b) => b.fiscalYear !== fy);
+    const zeroDate = `${fy.split('-')[0] || '2026'}-07-01`;
+    const resetOBForThisFy: OpeningBalance[] = accounts.map((acc) => ({
+      id: `OB-${fy}-${acc.accountCode}`,
+      fiscalYear: fy,
+      accountId: acc.id,
+      accountCode: acc.accountCode,
+      accountName: acc.accountName,
+      category: acc.category,
+      openingDate: zeroDate,
+      balanceType: (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit') as BalanceType,
+      amount: 0,
+      debit: 0,
+      credit: 0,
+      reference: '',
+      notes: 'Opening balance reset to 0',
+      status: 'Draft',
+      createdBy: currentUserRole,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+      updatedBy: currentUserRole,
+      updatedAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    }));
+
+    const newOpeningBalances = [...otherYearsOB, ...resetOBForThisFy];
+
+    // 4. Reset batch for this fiscal year to Draft, clear linked voucher metadata
+    const newOpeningBatches = openingBatches.map((b) =>
+      b.fiscalYear === fy
+        ? {
+            ...b,
+            status: 'Draft' as OpeningBalanceStatus,
+            voucherId: undefined,
+            voucherNo: undefined,
+            postedAt: undefined,
+            postedBy: undefined,
+            lockedAt: undefined,
+            lockedBy: undefined,
+          }
+        : b
+    );
+
+    // 5. Add audit trail entry: "Opening balances reset for FY 2026-27"
+    const timestampStr = new Date().toLocaleString('sv-SE').replace('T', ' ');
+    const auditReason = reason || `Opening balances reset for FY ${fy}`;
+    const resetAuditEntry: OpeningBalanceAudit = {
+      id: `AUD-OB-RESET-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      openingBalanceId: `OB-${fy}-RESET`,
+      accountId: 'ALL',
+      accountCode: 'COA-ALL',
+      accountName: 'All Accounts Master',
+      user: currentUserRole,
+      timestamp: timestampStr,
+      oldAmount: 0,
+      newAmount: 0,
+      oldType: 'Debit',
+      newType: 'Debit',
+      reason: auditReason,
+    };
+    const newAudits = [resetAuditEntry, ...openingBalanceAudits];
+
+    // Update React state
+    setAccounts(newAccounts);
+    setOpeningBalances(newOpeningBalances);
+    setVouchers(newVouchers);
+    setOpeningBatches(newOpeningBatches);
+    setOpeningBalanceAudits(newAudits);
+
+    // Log to global system audit log
+    logAudit(
+      'Opening Balances Reset',
+      'Finance & Accounts',
+      `OB-${fy}`,
+      `Opening balances reset for FY ${fy}. All opening debit and credit balances set to PKR 0. Linked opening vouchers reversed.`
+    );
+
+    // 6. Direct synchronous persistence to localStorage so that state changes survive any instant reload
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const baseState = stored ? JSON.parse(stored) : {};
+      const stateToPersist = {
+        ...baseState,
+        accounts: newAccounts,
+        openingBalances: newOpeningBalances,
+        vouchers: newVouchers,
+        openingBatches: newOpeningBatches,
+        openingBalanceAudits: newAudits,
+        currentFiscalYear: fy,
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToPersist));
+    } catch (e) {
+      console.error('Direct localStorage persistence error in resetOpeningBalances:', e);
     }
 
     return { success: true };
@@ -2042,13 +2234,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       entries,
     };
 
-    setVouchers((prev) => {
-      const exists = prev.some((v) => v.voucherNo === voucherNo || v.id === obVoucher.id);
-      if (exists) {
-        return prev.map((v) => (v.voucherNo === voucherNo || v.id === obVoucher.id ? obVoucher : v));
-      }
-      return [obVoucher, ...prev];
-    });
+    // Filter out ANY previous opening balance voucher for this fiscal year to strictly prevent duplicates
+    const isThisFyObVoucher = (v: Voucher) => (
+      v.id === obVoucher.id ||
+      v.voucherNo === voucherNo ||
+      v.voucherNo === `OB-${fy}` ||
+      v.referenceNo === `OB-${fy}` ||
+      (fy === '2026-27' && (v.voucherNo === 'OB-0001' || v.id === 'VOUCH-OB-001' || v.referenceNo === 'OB-2026-27'))
+    );
+
+    const filteredVouchers = vouchers.filter((v) => !isThisFyObVoucher(v));
+    const newVouchers = [obVoucher, ...filteredVouchers];
+    setVouchers(newVouchers);
 
     setOpeningBalances((prev) =>
       prev.map((b) => (b.fiscalYear === fy ? { ...b, status: 'Posted' } : b))
@@ -3456,11 +3653,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 12. Single clean audit log entry documenting the reset
     const zeroAuditLogs: AuditLog[] = [
       {
-        id: `LOG-ZERO-${Date.now()}`,
-        action: 'System Reset to Zero',
+        id: `LOG-RESET-${Date.now()}`,
+        action: 'RESET ALL TRANSACTION DATA',
         module: 'System Administration',
-        recordReference: 'START-FROM-ZERO',
-        details: 'Super Admin executed Start From Zero. All transactional journals, vouchers, invoices, payrolls, stock movements, and attendance cleared. Master data preserved with 0.00 balances.',
+        recordReference: 'RESET-ALL-TRANSACTIONS',
+        details: 'Super Admin executed RESET ALL TRANSACTION DATA. All operational and transactional data permanently deleted across all modules. Master accounts, settings, profiles, and configurations preserved with 0 balances.',
         timestamp: new Date().toLocaleString('sv-SE').replace('T', ' '),
         userName: 'Super Admin (Ali Akbar)',
         userRole: 'Super Admin',
@@ -3532,6 +3729,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteAllOperationalData = () => {
     resetSystemDataToZero();
+  };
+
+  const resetAllTransactionData = (): { success: boolean; backupJson?: string; error?: string } => {
+    return resetSystemDataToZero();
   };
 
   // Preview intelligent merge
@@ -3883,6 +4084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getOpeningBalanceForAccount,
         saveOpeningBalance,
         clearOpeningBalance,
+        resetOpeningBalances,
         postOpeningBalances,
         lockOpeningBalances,
         unlockOpeningBalances,
@@ -3983,6 +4185,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getDataSummaryCounts,
         resetToCleanInitialDataset,
         deleteAllOperationalData,
+        resetAllTransactionData,
         resetSystemDataToZero,
         previewMergeBackupJson,
         executeMergeBackup,

@@ -412,7 +412,7 @@ export const ReportsView: React.FC = () => {
           const obRecord = openingBalances.find(
             (b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear
           );
-          const obAmount = obRecord ? Number(obRecord.amount) || 0 : Number(acc.openingBalance) || 0;
+          const obAmount = obRecord !== undefined ? (Number(obRecord.amount) || 0) : (Number(acc.openingBalance) || 0);
           const obType: BalanceType = obRecord
             ? obRecord.balanceType
             : acc.openingBalanceType ||
@@ -729,9 +729,9 @@ export const ReportsView: React.FC = () => {
         const obRecord = openingBalances.find(
           (b) => b.accountId === selectedLedgerAccount?.id && b.fiscalYear === currentFiscalYear
         );
-        const obAmount = obRecord
-          ? Number(obRecord.amount) || 0
-          : Number(selectedLedgerAccount?.openingBalance) || 0;
+        const obAmount = obRecord !== undefined
+          ? (Number(obRecord.amount) || 0)
+          : (Number(selectedLedgerAccount?.openingBalance) || 0);
         const obType: BalanceType = obRecord
           ? obRecord.balanceType
           : selectedLedgerAccount?.openingBalanceType ||

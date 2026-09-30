@@ -185,7 +185,7 @@ export const ChartOfAccountsView: React.FC = () => {
       return;
     }
     const existingOb = openingBalances.find((b) => b.accountId === acc.id && b.fiscalYear === currentFiscalYear);
-    const initialAmount = existingOb ? existingOb.amount : Number(acc.openingBalance) || 0;
+    const initialAmount = existingOb !== undefined ? (Number(existingOb.amount) || 0) : (Number(acc.openingBalance) || 0);
     const initialType: BalanceType = existingOb
       ? existingOb.balanceType
       : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
@@ -198,7 +198,7 @@ export const ChartOfAccountsView: React.FC = () => {
     setOpeningBalance(initialAmount);
     setOpeningBalanceType(initialType);
     setOpeningBalanceDate(existingOb?.openingDate || '2026-07-01');
-    setOpeningBalanceRef(existingOb?.reference || 'OB-0001');
+    setOpeningBalanceRef(existingOb?.reference || (batchStatus === 'Posted' ? 'OB-0001' : ''));
     setOpeningBalanceNotes(existingOb?.notes || '');
     setOpeningBalanceReason('');
     setStatus(acc.status || 'Active');
@@ -234,7 +234,7 @@ export const ChartOfAccountsView: React.FC = () => {
           (acc.id && b.accountId === acc.id.replace(/^ACC-/, '')) ||
           (b.accountId && `ACC-${b.accountId}` === acc.id))
     );
-    const initialAmount = existingOb ? existingOb.amount : Number(acc.openingBalance) || 0;
+    const initialAmount = existingOb !== undefined ? (Number(existingOb.amount) || 0) : (Number(acc.openingBalance) || 0);
     const initialType: BalanceType = existingOb
       ? existingOb.balanceType
       : acc.openingBalanceType || (acc.category === 'Asset' || acc.category === 'Expense' ? 'Debit' : 'Credit');
@@ -243,7 +243,7 @@ export const ChartOfAccountsView: React.FC = () => {
     setOpeningBalance(initialAmount);
     setOpeningBalanceType(initialType);
     setOpeningBalanceDate(existingOb?.openingDate || '2026-07-01');
-    setOpeningBalanceRef(existingOb?.reference || 'OB-0001');
+    setOpeningBalanceRef(existingOb?.reference || (batchStatus === 'Posted' ? 'OB-0001' : ''));
     setOpeningBalanceNotes(existingOb?.notes || '');
     setOpeningBalanceReason('');
     setIsQuickOBModalOpen(true);
