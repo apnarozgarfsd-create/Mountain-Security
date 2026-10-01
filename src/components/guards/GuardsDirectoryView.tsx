@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   Calendar,
+  Camera,
   CheckCircle,
   Edit2,
   FileText,
@@ -54,6 +55,7 @@ export const GuardsDirectoryView: React.FC = () => {
   const [address, setAddress] = useState('');
   const [initialSiteId, setInitialSiteId] = useState('');
   const [initialWeaponId, setInitialWeaponId] = useState('');
+  const [photo, setPhoto] = useState<string>('');
   const [registerCnicError, setRegisterCnicError] = useState('');
 
   // Edit Guard Form State
@@ -71,12 +73,84 @@ export const GuardsDirectoryView: React.FC = () => {
   const [editSiteId, setEditSiteId] = useState('');
   const [editWeaponId, setEditWeaponId] = useState('');
   const [editStatus, setEditStatus] = useState<GuardStatus>('Active');
+  const [editPhoto, setEditPhoto] = useState<string>('');
   const [editCnicError, setEditCnicError] = useState('');
 
   // Transfer Form State
   const [targetSiteId, setTargetSiteId] = useState(sites[0]?.id || '');
   const [targetShift, setTargetShift] = useState('12 Hours (Day Shift)');
   const [transferRemarks, setTransferRemarks] = useState('');
+
+  // Resizes and compresses uploaded photos to high quality ~20-30KB data URL for fast persistent storage
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type.toLowerCase())) {
+        alert('Please select a JPG, JPEG or PNG image file.');
+        reject(new Error('Invalid image type'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 320;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(event.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          resolve(compressed);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await compressImage(file);
+      setPhoto(base64);
+    } catch (err) {
+      console.error('Error processing guard photo:', err);
+    }
+  };
+
+  const handleEditPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await compressImage(file);
+      setEditPhoto(base64);
+    } catch (err) {
+      console.error('Error processing edit guard photo:', err);
+    }
+  };
 
   const validatePakistaniCNIC = (value: string): boolean => {
     const digitsOnly = value.replace(/\D/g, '');
@@ -97,6 +171,7 @@ export const GuardsDirectoryView: React.FC = () => {
     setAddress('');
     setInitialSiteId('');
     setInitialWeaponId('');
+    setPhoto('');
     setRegisterCnicError('');
   };
 
@@ -132,6 +207,8 @@ export const GuardsDirectoryView: React.FC = () => {
       currentWeaponId: initialWeaponId || undefined,
       status: 'Active',
       designation: 'Security Guard',
+      photo: photo || undefined,
+      photoUrl: photo || undefined,
     });
 
     setIsRegisterOpen(false);
@@ -154,6 +231,7 @@ export const GuardsDirectoryView: React.FC = () => {
     setEditSiteId(guard.currentSiteId || '');
     setEditWeaponId(guard.currentWeaponId || '');
     setEditStatus(guard.status || 'Active');
+    setEditPhoto(guard.photo || guard.photoUrl || '');
     setEditCnicError('');
   };
 
@@ -188,6 +266,8 @@ export const GuardsDirectoryView: React.FC = () => {
       currentSiteName: editSiteId ? selectedSite?.siteName : undefined,
       currentWeaponId: editWeaponId || undefined,
       status: editStatus,
+      photo: editPhoto || undefined,
+      photoUrl: editPhoto || undefined,
     });
 
     setEditModalGuard(null);
@@ -336,10 +416,25 @@ export const GuardsDirectoryView: React.FC = () => {
                       {guard.date || guard.joiningDate || '-'}
                     </td>
 
-                    {/* 2. Name */}
+                    {/* 2. Name & Photo */}
                     <td className="py-3 px-3">
-                      <div className="font-bold text-slate-100">{guard.name}</div>
-                      <div className="text-[10px] text-blue-400 font-mono">{guard.guardCode}</div>
+                      <div className="flex items-center gap-2.5">
+                        {guard.photo || guard.photoUrl ? (
+                          <img
+                            src={guard.photo || guard.photoUrl}
+                            alt={guard.name}
+                            className="w-9 h-9 rounded-lg object-cover border border-slate-700 shrink-0 shadow-xs"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-400 font-bold text-xs uppercase shrink-0">
+                            {guard.name ? guard.name.slice(0, 2) : 'GD'}
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-bold text-slate-100">{guard.name}</div>
+                          <div className="text-[10px] text-blue-400 font-mono">{guard.guardCode}</div>
+                        </div>
+                      </div>
                     </td>
 
                     {/* 3. Father Name */}
@@ -504,6 +599,65 @@ export const GuardsDirectoryView: React.FC = () => {
                     placeholder="e.g. Tariq Mahmood"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
                   />
+                </div>
+
+                {/* Guard Photo Field */}
+                <div className="sm:col-span-2 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="relative shrink-0">
+                    {photo ? (
+                      <div className="relative group">
+                        <img
+                          src={photo}
+                          alt="Guard preview"
+                          className="w-20 h-20 rounded-xl object-cover border-2 border-blue-500 shadow-md"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPhoto('')}
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white rounded-full p-1 shadow-md transition-colors cursor-pointer"
+                          title="Remove Photo"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-slate-800 border-2 border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-400">
+                        <UserCheck className="w-7 h-7 text-slate-500 mb-1" />
+                        <span className="text-[10px] font-semibold text-slate-400">No Photo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 text-center sm:text-left space-y-1.5">
+                    <div>
+                      <label className="block text-slate-200 font-bold text-xs">Guard Photo</label>
+                      <p className="text-[11px] text-slate-400">
+                        Upload portrait picture (JPG, JPEG, PNG). Image will be resized and optimized for fast display.
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center sm:justify-start gap-2">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/90 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors">
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>{photo ? 'Change Photo' : 'Choose Photo'}</span>
+                        <input
+                          type="file"
+                          accept="image/png, image/jpeg, image/jpg"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {photo && (
+                        <button
+                          type="button"
+                          onClick={() => setPhoto('')}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-red-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3 text-red-400" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Row 2: Father Name | Contact */}
@@ -719,6 +873,65 @@ export const GuardsDirectoryView: React.FC = () => {
                     onChange={(e) => setEditName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold"
                   />
+                </div>
+
+                {/* Edit Guard Photo Field */}
+                <div className="sm:col-span-2 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="relative shrink-0">
+                    {editPhoto ? (
+                      <div className="relative group">
+                        <img
+                          src={editPhoto}
+                          alt="Guard preview"
+                          className="w-20 h-20 rounded-xl object-cover border-2 border-amber-500 shadow-md"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditPhoto('')}
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white rounded-full p-1 shadow-md transition-colors cursor-pointer"
+                          title="Remove Photo"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-slate-800 border-2 border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-400">
+                        <UserCheck className="w-7 h-7 text-slate-500 mb-1" />
+                        <span className="text-[10px] font-semibold text-slate-400">No Photo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 text-center sm:text-left space-y-1.5">
+                    <div>
+                      <label className="block text-slate-200 font-bold text-xs">Guard Photo</label>
+                      <p className="text-[11px] text-slate-400">
+                        Update or replace guard portrait photo (JPG, JPEG, PNG).
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center sm:justify-start gap-2">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/90 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors">
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>{editPhoto ? 'Change Photo' : 'Choose Photo'}</span>
+                        <input
+                          type="file"
+                          accept="image/png, image/jpeg, image/jpg"
+                          onChange={handleEditPhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {editPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setEditPhoto('')}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-red-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3 text-red-400" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Row 2: Father Name | Contact */}
@@ -1006,13 +1219,22 @@ export const GuardsDirectoryView: React.FC = () => {
             </div>
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Guard Name:</span>
-                <span className="font-bold text-white">{deleteModalGuard.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Guard Code:</span>
-                <span className="font-mono text-blue-400 font-bold">{deleteModalGuard.guardCode}</span>
+              <div className="flex items-center gap-3 pb-2 border-b border-slate-800/80">
+                {deleteModalGuard.photo || deleteModalGuard.photoUrl ? (
+                  <img
+                    src={deleteModalGuard.photo || deleteModalGuard.photoUrl}
+                    alt={deleteModalGuard.name}
+                    className="w-12 h-12 rounded-lg object-cover border border-slate-700 shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 font-bold text-sm uppercase shrink-0">
+                    {deleteModalGuard.name ? deleteModalGuard.name.slice(0, 2) : 'GD'}
+                  </div>
+                )}
+                <div>
+                  <div className="font-bold text-white text-sm">{deleteModalGuard.name}</div>
+                  <div className="text-xs text-blue-400 font-mono">{deleteModalGuard.guardCode}</div>
+                </div>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">CNIC:</span>

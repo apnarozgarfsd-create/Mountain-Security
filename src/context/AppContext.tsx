@@ -278,23 +278,38 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'MOUNTAIN_SECURITY_SGMS_DATA_V2';
+const LOCAL_STORAGE_KEY = 'MOUNTAIN_SECURITY_SGMS_DATA_V5';
 
 const isOldDemoData = (data: any): boolean => {
   if (!data) return false;
-  if (Array.isArray(data.vouchers) && data.vouchers.some((v: any) => v.voucherNo === 'OB-0001' || v.voucherNo === 'RV-2026-001' || v.voucherNo === 'PV-2026-001')) {
+  if (Array.isArray(data.clients) && data.clients.some((c: any) => c.id === 'CL-001' || c.clientName?.includes('T H M') || c.clientName?.includes('Sitara'))) {
     return true;
   }
-  if (Array.isArray(data.attendanceRecords) && data.attendanceRecords.some((a: any) => typeof a.id === 'string' && a.id.startsWith('ATT-202608-'))) {
+  if (Array.isArray(data.guards) && data.guards.some((g: any) => g.id === 'GRD-101' || g.name?.includes('Ali Akbar') || g.name?.includes('Tariq Mahmood'))) {
+    return true;
+  }
+  if (Array.isArray(data.weapons) && data.weapons.some((w: any) => w.id === 'WPN-001' || w.serialNumber?.includes('GLK'))) {
+    return true;
+  }
+  if (Array.isArray(data.products) && data.products.some((p: any) => p.id === 'PRD-001')) {
+    return true;
+  }
+  if (Array.isArray(data.financeAccounts) && data.financeAccounts.some((f: any) => f.id === 'ACC-CASH-AA')) {
+    return true;
+  }
+  if (Array.isArray(data.parties) && data.parties.some((p: any) => p.id === 'PTY-001' || p.name?.includes('Muhammad Rafiq Jam'))) {
+    return true;
+  }
+  if (Array.isArray(data.vouchers) && data.vouchers.length > 0) {
+    return true;
+  }
+  if (Array.isArray(data.attendanceRecords) && data.attendanceRecords.length > 0) {
     return true;
   }
   if (Array.isArray(data.openingBalances) && data.openingBalances.some((b: any) => b.id === 'OB-2026-1010' || b.id === 'OB-2026-1020')) {
     return true;
   }
-  if (Array.isArray(data.guardAssignments) && data.guardAssignments.some((g: any) => g.id === 'ASN-001')) {
-    return true;
-  }
-  if (Array.isArray(data.weapons) && data.weapons.some((w: any) => w.currentStatus === 'Issued' && w.currentGuardId === 'GRD-101')) {
+  if (Array.isArray(data.guardAssignments) && data.guardAssignments.length > 0) {
     return true;
   }
   return false;
@@ -310,8 +325,11 @@ const initialSecuritySettings: RoleSecuritySettings = {
 const getStoredInitialState = (): any => {
   try {
     if (typeof localStorage !== 'undefined') {
-      // Purge legacy demo data storage key so browser does not load old demo records
+      // Purge legacy demo data storage keys so browser does not load old demo records
       localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V1');
+      localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V2');
+      localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V3');
+      localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V4');
       localStorage.removeItem('MOUNTAIN_SECURITY_DATA');
       localStorage.removeItem('mss_security_data');
       
@@ -447,6 +465,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [printPayload, setPrintPayload] = useState<PrintDocumentPayload | null>(null);
+
+  // Auto-purge any lingering demo records on initial application load
+  useEffect(() => {
+    const hasOldDemoData =
+      clients.some((c) => c.id === 'CL-001' || c.clientName?.includes('T H M') || c.clientName?.includes('Sitara')) ||
+      guards.some((g) => g.id === 'GRD-101' || g.name?.includes('Ali Akbar') || g.name?.includes('Tariq Mahmood')) ||
+      weapons.some((w) => w.id === 'WPN-001') ||
+      products.some((p) => p.id === 'PRD-001') ||
+      parties.some((p) => p.id === 'PTY-001') ||
+      financeAccounts.some((f) => f.id === 'ACC-CASH-AA') ||
+      vouchers.length > 0 ||
+      attendanceRecords.length > 0;
+
+    if (hasOldDemoData) {
+      console.warn('Purging all sample demo entries from app state and storage...');
+      setClients([]);
+      setSites([]);
+      setGuards([]);
+      setGuardAssignments([]);
+      setWeapons([]);
+      setWeaponAssignments([]);
+      setProducts([]);
+      setStockTransactions([]);
+      setGuardIssuedItems([]);
+      setFinanceAccounts([]);
+      setParties([]);
+      setCashTransactions([]);
+      setVouchers([]);
+      setSalarySlips([]);
+      setClientInvoices([]);
+      setAttendanceRecords([]);
+      setOpeningBalances([]);
+      setOpeningBalanceAudits([]);
+      try {
+        localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V1');
+        localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V2');
+        localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V3');
+        localStorage.removeItem('MOUNTAIN_SECURITY_SGMS_DATA_V4');
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, []);
 
   // Save to LocalStorage whenever state changes
   useEffect(() => {
@@ -2958,7 +3020,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (a) => a.name.toLowerCase().includes(accountNameRaw.toLowerCase()) || a.id === accountNameRaw
         );
         if (!targetAcc) {
-          targetAcc = financeAccounts[0];
+          if (financeAccounts.length > 0) {
+            targetAcc = financeAccounts[0];
+          } else {
+            errors.push(`Row ${index + 1}: No finance account available. Please create a finance account first.`);
+            return;
+          }
         }
 
         // Match or resolve Category
@@ -2967,6 +3034,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
         if (!targetCat) {
           targetCat = expenseCategories.find((c) => c.name === 'Office') || expenseCategories[0];
+        }
+        if (!targetCat) {
+          errors.push(`Row ${index + 1}: No expense category available.`);
+          return;
         }
 
         const newTxn: CashTransaction = {
@@ -3697,15 +3768,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     ];
 
-    // Update all React states
+    // Update all React states to empty clean slate
     setAccounts(zeroAccounts);
-    setClients(zeroClients);
-    setSites(zeroSites);
-    setGuards(zeroGuards);
-    setWeapons(zeroWeapons);
-    setProducts(zeroProducts);
-    setFinanceAccounts(zeroFinanceAccounts);
-    setParties(zeroParties);
+    setClients([]);
+    setSites([]);
+    setGuards([]);
+    setWeapons([]);
+    setProducts([]);
+    setFinanceAccounts([]);
+    setParties([]);
     setOpeningBatches(resetBatches);
 
     setVouchers(emptyVouchers);
@@ -3723,13 +3794,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Synchronously write clean state to LocalStorage so immediate reload persists
     const cleanState = {
-      clients: zeroClients,
-      sites: zeroSites,
-      guards: zeroGuards,
+      clients: [],
+      sites: [],
+      guards: [],
       guardAssignments: emptyGuardAssignments,
-      weapons: zeroWeapons,
+      weapons: [],
       weaponAssignments: emptyWeaponAssignments,
-      products: zeroProducts,
+      products: [],
       inventoryCategories,
       stockTransactions: emptyStockTransactions,
       guardIssuedItems: emptyGuardIssuedItems,
@@ -3745,9 +3816,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       companySettings,
       securitySettings,
       attendanceRecords: emptyAttendanceRecords,
-      financeAccounts: zeroFinanceAccounts,
+      financeAccounts: [],
       expenseCategories,
-      parties: zeroParties,
+      parties: [],
       cashTransactions: emptyCashTransactions,
     };
 

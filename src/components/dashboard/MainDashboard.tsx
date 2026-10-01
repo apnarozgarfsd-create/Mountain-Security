@@ -306,29 +306,37 @@ export const MainDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">
-                {sites.map((site) => (
-                  <tr key={site.id} className="hover:bg-slate-900/50 transition-colors">
-                    <td className="py-2.5 px-3 font-bold text-slate-200">
-                      <div>{site.siteName}</div>
-                      <span className="text-[10px] text-slate-400 font-mono">{site.siteCode}</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-300">{site.clientName}</td>
-                    <td className="py-2.5 px-3 text-slate-400">{site.siteSupervisor || 'Ali Akbar'}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className="inline-block bg-blue-950 text-blue-300 px-2 py-0.5 rounded font-mono font-bold">
-                        {site.requiredGuards} Guards
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-200">
-                      {formatPKR(site.monthlyRate)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-                        {site.status}
-                      </span>
+                {sites.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
+                      No client sites or deployments found. Click "Add Site" in Sites to register a new site.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  sites.map((site) => (
+                    <tr key={site.id} className="hover:bg-slate-900/50 transition-colors">
+                      <td className="py-2.5 px-3 font-bold text-slate-200">
+                        <div>{site.siteName}</div>
+                        <span className="text-[10px] text-slate-400 font-mono">{site.siteCode}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-300">{site.clientName}</td>
+                      <td className="py-2.5 px-3 text-slate-400">{site.siteSupervisor || 'Ali Akbar'}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className="inline-block bg-blue-950 text-blue-300 px-2 py-0.5 rounded font-mono font-bold">
+                          {site.requiredGuards} Guards
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-200">
+                        {formatPKR(site.monthlyRate)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                          {site.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -351,31 +359,37 @@ export const MainDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-2.5">
-              {vouchers.slice(0, 4).map((vouch) => (
-                <div
-                  key={vouch.id}
-                  onClick={() =>
-                    triggerPrint({
-                      type: 'voucher',
-                      data: vouch,
-                      title: `Voucher #${vouch.voucherNo}`,
-                    })
-                  }
-                  className="p-3 bg-slate-900/70 hover:bg-slate-900 border border-slate-800/80 rounded-lg cursor-pointer transition-colors group"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-blue-400 group-hover:text-blue-300 font-mono">
-                      {vouch.voucherNo}
-                    </span>
-                    <span className="font-black text-slate-100">{formatPKR(vouch.totalDebit)}</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 truncate mt-1">{vouch.narration}</p>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 font-medium">
-                    <span>Type: {vouch.voucherType}</span>
-                    <span>{vouch.date}</span>
-                  </div>
+              {vouchers.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs">
+                  No vouchers recorded. Click below to create your first voucher.
                 </div>
-              ))}
+              ) : (
+                vouchers.slice(0, 4).map((vouch) => (
+                  <div
+                    key={vouch.id}
+                    onClick={() =>
+                      triggerPrint({
+                        type: 'voucher',
+                        data: vouch,
+                        title: `Voucher #${vouch.voucherNo}`,
+                      })
+                    }
+                    className="p-3 bg-slate-900/70 hover:bg-slate-900 border border-slate-800/80 rounded-lg cursor-pointer transition-colors group"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-blue-400 group-hover:text-blue-300 font-mono">
+                        {vouch.voucherNo}
+                      </span>
+                      <span className="font-black text-slate-100">{formatPKR(vouch.totalDebit)}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 truncate mt-1">{vouch.narration}</p>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 font-medium">
+                      <span>Type: {vouch.voucherType}</span>
+                      <span>{vouch.date}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 

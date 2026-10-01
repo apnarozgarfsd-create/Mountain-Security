@@ -31,61 +31,58 @@ export const ClientsPage: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [deleteModalClient, setDeleteModalClient] = useState<Client | null>(null);
 
-  const [formData, setFormData] = useState<Omit<Client, 'id' | 'createdAt'>>({
+  const [formData, setFormData] = useState({
     clientCode: `C-${(clients.length + 1).toString().padStart(3, '0')}`,
     clientName: '',
-    companyName: '',
     contactPerson: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: 'Peshawar',
     contractStartDate: new Date().toISOString().split('T')[0],
     contractEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    billingMethod: 'Per Guard Monthly',
-    monthlyBillingAmount: 75000,
-    ratePerGuard: 25000,
+    status: 'Active' as 'Active' | 'Inactive' | 'Suspended',
     paymentTerms: 'Due on 5th of each month',
-    status: 'Active',
-    notes: '',
   });
 
   const filteredClients = clients.filter((c) => {
+    const name = (c.clientName || c.companyName || '').toLowerCase();
+    const code = (c.clientCode || '').toLowerCase();
+    const contact = (c.contactPerson || '').toLowerCase();
+    const phone = (c.phone || '');
+    const query = searchQuery.toLowerCase();
     const matchesSearch =
-      c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.clientCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery);
+      name.includes(query) ||
+      code.includes(query) ||
+      contact.includes(query) ||
+      phone.includes(query);
     const matchesStatus = filterStatus === 'All' || c.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
   const handleSaveClient = (e: React.FormEvent) => {
     e.preventDefault();
+    const clientPayload = {
+      clientCode: formData.clientCode,
+      clientName: formData.clientName,
+      companyName: formData.clientName,
+      contactPerson: formData.contactPerson,
+      contractStartDate: formData.contractStartDate,
+      contractEndDate: formData.contractEndDate,
+      status: formData.status,
+      paymentTerms: formData.paymentTerms,
+    };
     if (selectedClient) {
-      updateClient(selectedClient.id, formData);
+      updateClient(selectedClient.id, clientPayload);
       setSelectedClient(null);
     } else {
-      addClient(formData);
+      addClient(clientPayload);
       setIsAddModalOpen(false);
     }
     setFormData({
       clientCode: `C-${(clients.length + 2).toString().padStart(3, '0')}`,
       clientName: '',
-      companyName: '',
       contactPerson: '',
-      phone: '',
-      email: '',
-      address: '',
-      city: 'Peshawar',
       contractStartDate: new Date().toISOString().split('T')[0],
       contractEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      billingMethod: 'Per Guard Monthly',
-      monthlyBillingAmount: 75000,
-      ratePerGuard: 25000,
-      paymentTerms: 'Due on 5th of each month',
       status: 'Active',
-      notes: '',
+      paymentTerms: 'Due on 5th of each month',
     });
   };
 
@@ -95,21 +92,21 @@ export const ClientsPage: React.FC = () => {
 
     triggerPrint({
       type: 'client-invoice',
-      title: `Client Security Profile - ${client.companyName}`,
+      title: `Client Security Profile - ${client.clientName || client.companyName}`,
       data: {
         invoiceNo: `PROF-${client.clientCode}`,
-        clientName: client.companyName,
+        clientName: client.clientName || client.companyName,
         billingMonth: 'Current Deployment',
         issueDate: new Date().toISOString().split('T')[0],
         dueDate: client.contractEndDate,
         guardsDeployed: clientGuards.length,
-        ratePerGuard: client.ratePerGuard,
+        ratePerGuard: client.ratePerGuard || 0,
         additionalCharges: 0,
         taxAmount: 0,
-        totalAmount: client.monthlyBillingAmount,
+        totalAmount: client.monthlyBillingAmount || 0,
         paidAmount: 0,
-        balanceAmount: client.monthlyBillingAmount,
-        notes: `Registered sites: ${clientSites.map((s) => s.siteName).join(', ')}. Contact: ${client.contactPerson} (${client.phone})`,
+        balanceAmount: client.monthlyBillingAmount || 0,
+        notes: `Registered sites: ${clientSites.map((s) => s.siteName).join(', ')}. Contact: ${client.contactPerson}${client.phone ? ` (${client.phone})` : ''}`,
       },
     });
   };
@@ -190,7 +187,7 @@ export const ClientsPage: React.FC = () => {
                       {client.clientCode}
                     </span>
                     <h3 className="text-base font-bold text-white mt-1 group-hover:text-blue-300 transition-colors">
-                      {client.companyName}
+                      {client.clientName || client.companyName}
                     </h3>
                     <p className="text-xs text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
                       <User className="w-3 h-3 text-slate-500" />
@@ -210,23 +207,47 @@ export const ClientsPage: React.FC = () => {
                 </div>
 
                 <div className="bg-slate-900/80 rounded-xl p-3 border border-slate-800/80 space-y-2 text-xs">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{client.phone}</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{client.city}</span>
-                    </span>
-                  </div>
+                  {(client.phone || client.city) && (
+                    <div className="flex items-center justify-between text-slate-400">
+                      {client.phone && (
+                        <span className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-500" />
+                          <span>{client.phone}</span>
+                        </span>
+                      )}
+                      {client.city && (
+                        <span className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                          <span>{client.city}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
-                    <span className="text-slate-400">Monthly Contract:</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {formatPKR(client.monthlyBillingAmount)}
-                    </span>
-                  </div>
+                  {client.contractStartDate && client.contractEndDate && (
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Contract Period:</span>
+                      <span className="font-mono text-slate-300">
+                        {client.contractStartDate} → {client.contractEndDate}
+                      </span>
+                    </div>
+                  )}
+
+                  {client.monthlyBillingAmount ? (
+                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+                      <span className="text-slate-400">Monthly Contract:</span>
+                      <span className="font-mono font-bold text-emerald-400 text-sm">
+                        {formatPKR(client.monthlyBillingAmount)}
+                      </span>
+                    </div>
+                  ) : client.paymentTerms ? (
+                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+                      <span className="text-slate-400">Payment Terms:</span>
+                      <span className="text-slate-300 font-medium truncate max-w-[180px]">
+                        {client.paymentTerms}
+                      </span>
+                    </div>
+                  ) : null}
 
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>Active Force Deployed:</span>
@@ -253,21 +274,12 @@ export const ClientsPage: React.FC = () => {
                       setSelectedClient(client);
                       setFormData({
                         clientCode: client.clientCode,
-                        clientName: client.clientName,
-                        companyName: client.companyName,
-                        contactPerson: client.contactPerson,
-                        phone: client.phone,
-                        email: client.email || '',
-                        address: client.address,
-                        city: client.city,
-                        contractStartDate: client.contractStartDate,
-                        contractEndDate: client.contractEndDate,
-                        billingMethod: client.billingMethod,
-                        monthlyBillingAmount: client.monthlyBillingAmount,
-                        ratePerGuard: client.ratePerGuard,
-                        paymentTerms: client.paymentTerms,
-                        status: client.status,
-                        notes: client.notes || '',
+                        clientName: client.clientName || client.companyName || '',
+                        contactPerson: client.contactPerson || '',
+                        contractStartDate: client.contractStartDate || new Date().toISOString().split('T')[0],
+                        contractEndDate: client.contractEndDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        status: client.status || 'Active',
+                        paymentTerms: client.paymentTerms || '',
                       });
                       setIsAddModalOpen(true);
                     }}
@@ -296,7 +308,7 @@ export const ClientsPage: React.FC = () => {
           <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white uppercase tracking-tight">
-                {selectedClient ? 'Edit Client Details' : 'Register New Corporate Client'}
+                REGISTER NEW CORPORATE CLIENT
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -308,6 +320,7 @@ export const ClientsPage: React.FC = () => {
 
             <form onSubmit={handleSaveClient} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 1. Client Code * */}
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Client Code *</label>
                   <input
@@ -319,18 +332,20 @@ export const ClientsPage: React.FC = () => {
                   />
                 </div>
 
+                {/* 2. Client Name * */}
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Company Registered Name *</label>
+                  <label className="block text-slate-400 font-semibold mb-1">Client Name *</label>
                   <input
                     type="text"
                     required
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value, clientName: e.target.value })}
+                    value={formData.clientName}
+                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-bold"
                   />
                 </div>
 
-                <div>
+                {/* 3. Contact Person * */}
+                <div className="sm:col-span-2">
                   <label className="block text-slate-400 font-semibold mb-1">Contact Person *</label>
                   <input
                     type="text"
@@ -341,70 +356,7 @@ export const ClientsPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Official Mobile / Phone *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Official Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">City *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-400 font-semibold mb-1">Full Head Office Address *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Monthly Billing Amount (PKR) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.monthlyBillingAmount}
-                    onChange={(e) => setFormData({ ...formData, monthlyBillingAmount: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-emerald-400 font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Standard Rate Per Guard (PKR)</label>
-                  <input
-                    type="number"
-                    value={formData.ratePerGuard}
-                    onChange={(e) => setFormData({ ...formData, ratePerGuard: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                  />
-                </div>
-
+                {/* 4. Contract Start Date */}
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Contract Start Date</label>
                   <input
@@ -415,6 +367,7 @@ export const ClientsPage: React.FC = () => {
                   />
                 </div>
 
+                {/* 5. Contract Expiry Date */}
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Contract Expiry Date</label>
                   <input
@@ -425,7 +378,8 @@ export const ClientsPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                {/* 6. Account Status */}
+                <div className="sm:col-span-2">
                   <label className="block text-slate-400 font-semibold mb-1">Account Status</label>
                   <select
                     value={formData.status}
@@ -438,6 +392,7 @@ export const ClientsPage: React.FC = () => {
                   </select>
                 </div>
 
+                {/* 7. Payment & Invoice Terms */}
                 <div className="sm:col-span-2">
                   <label className="block text-slate-400 font-semibold mb-1">Payment & Invoice Terms</label>
                   <input
@@ -485,8 +440,8 @@ export const ClientsPage: React.FC = () => {
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-400">Company Name:</span>
-                <span className="font-bold text-white">{deleteModalClient.companyName}</span>
+                <span className="text-slate-400">Client Name:</span>
+                <span className="font-bold text-white">{deleteModalClient.clientName || deleteModalClient.companyName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Client Code:</span>
@@ -494,7 +449,7 @@ export const ClientsPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Contact Person:</span>
-                <span className="text-slate-300">{deleteModalClient.contactPerson} ({deleteModalClient.phone})</span>
+                <span className="text-slate-300">{deleteModalClient.contactPerson}{deleteModalClient.phone ? ` (${deleteModalClient.phone})` : ''}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Active Sites:</span>
@@ -505,7 +460,7 @@ export const ClientsPage: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300">
-              Are you sure you want to delete corporate client <strong>{deleteModalClient.companyName}</strong> from the system?
+              Are you sure you want to delete corporate client <strong>{deleteModalClient.clientName || deleteModalClient.companyName}</strong> from the system?
             </p>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">

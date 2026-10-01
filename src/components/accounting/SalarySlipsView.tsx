@@ -76,7 +76,7 @@ export const SalarySlipsView: React.FC = () => {
   const handlePreFillSampleSlip = (type: 'July-Ali' | 'June-Ali-Eid') => {
     if (type === 'July-Ali') {
       const ali = guards.find((g) => g.name.includes('Ali Akbar')) || guards[0];
-      setSelectedGuardId(ali.id);
+      if (ali) setSelectedGuardId(ali.id);
       setSlipNo('MSS/07/2026/0002');
       setMonthName('July 2026');
       setMonthYear('2026-07');
@@ -93,7 +93,7 @@ export const SalarySlipsView: React.FC = () => {
       setNotes('Official July 2026 Salary Slip');
     } else if (type === 'June-Ali-Eid') {
       const ali = guards.find((g) => g.name.includes('Ali Akbar')) || guards[0];
-      setSelectedGuardId(ali.id);
+      if (ali) setSelectedGuardId(ali.id);
       setSlipNo('MSS/07/2026/0007');
       setMonthName('June 2026');
       setMonthYear('2026-06');

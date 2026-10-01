@@ -33,19 +33,19 @@ export interface Client {
   id: string;
   clientCode: string;
   clientName: string;
-  companyName: string;
+  companyName?: string;
   contactPerson: string;
-  phone: string;
+  phone?: string;
   email?: string;
-  address: string;
-  city: string;
+  address?: string;
+  city?: string;
   cnicOrRegNo?: string;
   contractStartDate: string;
   contractEndDate: string;
-  billingMethod: 'Per Guard Monthly' | 'Fixed Lump Sum' | 'Shift Based';
-  monthlyBillingAmount: number;
-  ratePerGuard: number;
-  paymentTerms: string;
+  billingMethod?: 'Per Guard Monthly' | 'Fixed Lump Sum' | 'Shift Based';
+  monthlyBillingAmount?: number;
+  ratePerGuard?: number;
+  paymentTerms?: string;
   status: 'Active' | 'Inactive' | 'Suspended';
   currentBalance?: number;
   notes?: string;
@@ -97,6 +97,7 @@ export interface Guard {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   notes?: string;
+  photo?: string;
   photoUrl?: string;
 }
 
