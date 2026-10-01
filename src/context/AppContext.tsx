@@ -1216,6 +1216,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       weaponCode: weapon.weaponCode,
       weaponType: weapon.weaponType,
       serialNumber: weapon.serialNumber,
+      licenseNumber: weapon.licenseNumber,
+      licenseImage: weapon.licenseImage,
       guardId: guard.id,
       guardName: guard.name,
       siteId: site.id,

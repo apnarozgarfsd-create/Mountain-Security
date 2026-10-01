@@ -169,6 +169,8 @@ export interface Weapon {
   weaponType: '12-Bore Shotgun' | '9mm Pistol' | '30-Bore Pistol' | 'Semi-Automatic Rifle' | 'Repeater' | 'MP5 Clone' | 'Other';
   makeModel: string;
   serialNumber: string;
+  licenseNumber?: string;
+  licenseImage?: string;
   category: 'Shotguns' | 'Pistols' | 'Rifles' | 'Automatic' | 'Other';
   purchaseDate: string;
   purchaseCost: number;
@@ -188,6 +190,8 @@ export interface WeaponAssignmentHistory {
   weaponCode: string;
   weaponType: string;
   serialNumber: string;
+  licenseNumber?: string;
+  licenseImage?: string;
   guardId: string;
   guardName: string;
   guardCode?: string;

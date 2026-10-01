@@ -11,6 +11,7 @@ export const WeaponAssignmentsView: React.FC = () => {
     const matchesSearch =
       log.weaponCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (log.licenseNumber && log.licenseNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       log.guardName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (log.siteName && log.siteName.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesAction = filterAction === 'All' || log.actionType === filterAction;
@@ -95,7 +96,10 @@ export const WeaponAssignmentsView: React.FC = () => {
                   <td className="py-3 px-4 text-slate-300 font-mono">{log.issuedDate || log.returnedDate}</td>
                   <td className="py-3 px-4">
                     <span className="font-bold text-red-400 font-mono">{log.weaponCode}</span>
-                    <div className="text-[10px] text-slate-400 font-mono">S/N: {log.serialNumber}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      S/N: {log.serialNumber}
+                      {log.licenseNumber && <span className="text-cyan-400 ml-1.5 font-sans font-semibold">Lic: {log.licenseNumber}</span>}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     <div className="font-bold text-slate-100">{log.guardName}</div>

@@ -174,6 +174,7 @@ export const PrintModal: React.FC = () => {
                     <div><span className="text-slate-500">Weapon Type:</span> <strong>{printPayload.data.weaponType}</strong></div>
                     <div><span className="text-slate-500">Make & Model:</span> <strong>{printPayload.data.makeModel}</strong></div>
                     <div><span className="text-slate-500">Serial Number:</span> <strong className="text-red-700">{printPayload.data.serialNumber}</strong></div>
+                    <div><span className="text-slate-500">Govt. License #:</span> <strong className="text-blue-900">{printPayload.data.licenseNumber || 'N/A'}</strong></div>
                     <div><span className="text-slate-500">Condition:</span> <strong>{printPayload.data.condition}</strong></div>
                     <div><span className="text-slate-500">Armoury Bay:</span> <strong>{printPayload.data.armouryLocation}</strong></div>
                   </div>
