@@ -32,6 +32,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Account, AccountCategory, BalanceType, OpeningBalance } from '../../types';
 import { formatPKR } from '../../utils/formatters';
+import { CreateAccountModal } from './CreateAccountModal';
 
 export const OpeningBalancesView: React.FC = () => {
   const {
@@ -77,6 +78,7 @@ export const OpeningBalancesView: React.FC = () => {
   const [editReason, setEditReason] = useState<string>('');
 
   // Confirmation Modals State
+  const [isCreateAccountOpen, setIsCreateAccountOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isPostConfirmOpen, setIsPostConfirmOpen] = useState(false);
   const [isCarryForwardConfirmOpen, setIsCarryForwardConfirmOpen] = useState(false);
@@ -136,7 +138,9 @@ export const OpeningBalancesView: React.FC = () => {
       const matchesSearch =
         item.account.accountCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.account.accountName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.account.subcategory.toLowerCase().includes(searchTerm.toLowerCase());
+        (item.account.subcategory ? item.account.subcategory.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
+        (item.account.path ? item.account.path.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
+        (item.account.legacyCode ? item.account.legacyCode.includes(searchTerm) : false);
 
       const matchesCategory = selectedCategory === 'All' || item.account.category === selectedCategory;
 
@@ -770,6 +774,19 @@ export const OpeningBalancesView: React.FC = () => {
                   <option value="ZeroBalance" className="bg-slate-900">Zero Balance (0)</option>
                 </select>
               </div>
+
+              {/* Create New Account Button */}
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setIsCreateAccountOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-md cursor-pointer ml-1"
+                  title="Create new multi-level account in Chart of Accounts"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create Account (نیا کھاتہ)</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1452,6 +1469,19 @@ export const OpeningBalancesView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Final-Level Modal: Create New Account (Opening Balances) */}
+      <CreateAccountModal
+        isOpen={isCreateAccountOpen}
+        onClose={() => setIsCreateAccountOpen(false)}
+        onAccountCreated={(newAcc) => {
+          setNotice({
+            type: 'success',
+            message: `Account "${newAcc.accountCode} - ${newAcc.accountName}" registered. You can now configure its opening balance.`,
+          });
+          setTimeout(() => setNotice(null), 5000);
+        }}
+      />
     </div>
   );
 };

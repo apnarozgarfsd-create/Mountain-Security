@@ -66,10 +66,24 @@ import {
   UserRole,
   Voucher,
   VoucherEntry,
+  VoucherStatus,
   Weapon,
   WeaponAssignmentHistory,
 } from '../types';
 import { numberToWordsPKR } from '../utils/formatters';
+import {
+  calculateAccountLevel,
+  calculateAccountPath,
+  canPostToAccount,
+  createPreMigrationBackup,
+  entryMatchesAccount,
+  isLeafAccount,
+  migrateLegacyAccountsToMultiLevel,
+  roundCurrency,
+  validateAccountCodeUnique,
+  validateDoubleEntryVoucher,
+  validateParentChildRelationship,
+} from '../services/accountingService';
 
 
 interface PrintDocumentPayload {
@@ -244,8 +258,9 @@ interface AppContextType {
   addAccount: (account: Omit<Account, 'id' | 'currentBalance'>) => Account;
   updateAccount: (id: string, account: Partial<Account>) => void;
   deleteAccount: (id: string) => { success: boolean; error?: string };
-  createVoucher: (voucher: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'>) => { success: boolean; error?: string; voucher?: Voucher };
+  createVoucher: (voucher: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'> & { status?: VoucherStatus }) => { success: boolean; error?: string; voucher?: Voucher };
   cancelVoucher: (id: string, reason: string) => void;
+  reverseVoucher: (id: string, reason: string) => { success: boolean; error?: string; reversalVoucher?: Voucher };
   deleteVoucher: (id: string) => void;
 
   // Actions - Salary Slips & Invoicing
@@ -408,7 +423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const [accounts, setAccounts] = useState<Account[]>(
     () => (Array.isArray(initialStored?.accounts) && initialStored.accounts.length > 0
-      ? initialStored.accounts
+      ? migrateLegacyAccountsToMultiLevel(initialStored.accounts)
       : initialAccounts)
   );
   const [vouchers, setVouchers] = useState<Voucher[]>(
@@ -1632,41 +1647,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // --- Accounts & Double-Entry Accounting ---
   const addAccount = (accountData: Omit<Account, 'id' | 'currentBalance'>): Account => {
-    const id = `ACC-${accountData.accountCode}`;
+    // 0. Authorization check at data-access layer
+    if (currentUserRole !== 'Super Admin' && currentUserRole !== 'Accountant') {
+      throw new Error(`Unauthorized: User role "${currentUserRole}" is not permitted to create accounts in Chart of Accounts.`);
+    }
+
+    // 1. Validation: code must be unique
+    const isUnique = validateAccountCodeUnique(accountData.accountCode, undefined, accounts);
+    if (!isUnique) {
+      throw new Error(`Account code "${accountData.accountCode}" is already in use by another account.`);
+    }
+
+    // 2. Validate parent-child if parentId is provided
+    if (accountData.parentId) {
+      const parentCheck = validateParentChildRelationship('', accountData.parentId, accounts, accountData.category);
+      if (!parentCheck.isValid) {
+        throw new Error(parentCheck.error || 'Invalid parent account selected.');
+      }
+    }
+
+    const id = `ACC-${accountData.accountCode.trim()}`;
+    const level = calculateAccountLevel(accountData.parentId, accounts);
+    
+    const parent = accounts.find((a) => a.id === accountData.parentId);
+    const parentCode = parent ? parent.accountCode : null;
+
     const newAccount: Account = {
       ...accountData,
       id,
+      accountCode: accountData.accountCode.trim(),
+      accountName: accountData.accountName.trim(),
+      level,
+      parentId: accountData.parentId || null,
+      parentCode,
+      path: '',
+      isPostable: true, // leaf by default upon creation
       currentBalance: accountData.openingBalance || 0,
+      status: accountData.status || 'Active',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserRole,
     };
-    setAccounts((prev) => [...prev, newAccount]);
-    logAudit('Account Created', 'Chart of Accounts', newAccount.accountCode, `Added account ${newAccount.accountCode} - ${newAccount.accountName}`);
+    newAccount.path = calculateAccountPath(newAccount, [...accounts, newAccount]);
+
+    // If parent was previously marked postable, it now has a child, so isPostable becomes false
+    const updatedAccounts = accounts.map((a) => {
+      if (accountData.parentId && a.id === accountData.parentId) {
+        return { ...a, isPostable: false };
+      }
+      return a;
+    });
+    const newAccountsList = [...updatedAccounts, newAccount];
+    setAccounts(newAccountsList);
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const baseState = stored ? JSON.parse(stored) : {};
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ ...baseState, accounts: newAccountsList }));
+    } catch (e) {
+      console.error('Direct localStorage persistence error in addAccount:', e);
+    }
+
+    logAudit('Account Created', 'Chart of Accounts', newAccount.accountCode, `Added Level ${newAccount.level} account ${newAccount.accountCode} - ${newAccount.accountName}`);
     return newAccount;
   };
 
   const updateAccount = (id: string, updated: Partial<Account>) => {
-    setAccounts((prev) =>
-      prev.map((a) => (a.id === id || a.accountCode === id || a.id === `ACC-${id}` ? { ...a, ...updated } : a))
-    );
+    // 0. Authorization check at data-access layer
+    if (currentUserRole !== 'Super Admin' && currentUserRole !== 'Accountant') {
+      throw new Error(`Unauthorized: User role "${currentUserRole}" is not permitted to modify accounts in Chart of Accounts.`);
+    }
+
+    // Validate uniqueness if code changed
+    if (updated.accountCode) {
+      const isUnique = validateAccountCodeUnique(updated.accountCode, id, accounts);
+      if (!isUnique) {
+        throw new Error(`Account code "${updated.accountCode}" already exists.`);
+      }
+    }
+
+    // Validate parent-child if parent changed
+    if (updated.parentId !== undefined) {
+      const currentAcc = accounts.find((a) => a.id === id || a.accountCode === id);
+      const targetCategory = updated.category || (currentAcc ? currentAcc.category : undefined);
+      const valid = validateParentChildRelationship(id, updated.parentId, accounts, targetCategory);
+      if (!valid.isValid) {
+        throw new Error(valid.error || 'Invalid parent account relationship.');
+      }
+    }
+
+    setAccounts((prev) => {
+      const parentAcc = prev.find((a) => a.id === updated.parentId);
+      const parentCode = parentAcc ? parentAcc.accountCode : (updated.parentId === null ? null : undefined);
+      const newLevel = updated.parentId !== undefined ? calculateAccountLevel(updated.parentId, prev) : undefined;
+
+      const mapped = prev.map((a) => {
+        if (a.id === id || a.accountCode === id) {
+          const merged = {
+            ...a,
+            ...updated,
+            parentCode: parentCode !== undefined ? parentCode : a.parentCode,
+            level: newLevel !== undefined ? newLevel : a.level,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUserRole,
+          };
+          return merged;
+        }
+        return a;
+      });
+
+      return mapped.map((acc) => ({
+        ...acc,
+        path: calculateAccountPath(acc, mapped),
+        isPostable: isLeafAccount(acc.id, mapped),
+      }));
+    });
+
     logAudit('Account Updated', 'Chart of Accounts', id, `Modified account properties for ${id}`);
   };
 
   const deleteAccount = (id: string): { success: boolean; error?: string } => {
-    const target = accounts.find((a) => a.id === id);
+    // 0. Authorization check at data-access layer
+    if (currentUserRole !== 'Super Admin' && currentUserRole !== 'Accountant') {
+      return {
+        success: false,
+        error: `Unauthorized: User role "${currentUserRole}" is not permitted to delete accounts in Chart of Accounts.`,
+      };
+    }
+
+    const target = accounts.find((a) => a.id === id || a.accountCode === id);
     if (!target) return { success: false, error: 'Account not found.' };
 
+    // 1. Prevent deleting if it has active child accounts
+    const hasChildren = accounts.some((a) => a.parentId === target.id);
+    if (hasChildren) {
+      return {
+        success: false,
+        error: `Cannot delete account ${target.accountCode} (${target.accountName}) because it has subaccounts. Please delete or reassign all child accounts first.`,
+      };
+    }
+
+    // 2. Prevent deleting system Level 1 accounts
+    if (target.isSystem && target.level === 1) {
+      return {
+        success: false,
+        error: `Cannot delete Level 1 main account ${target.accountCode} (${target.accountName}). Root accounts are system protected.`,
+      };
+    }
+
+    // 3. Check for linked vouchers
     const linkedVouchers = vouchers.filter((v) =>
-      v.entries.some((e) => e.accountId === id || e.accountCode === target.accountCode)
+      v.entries.some((e) => e.accountId === target.id || e.accountCode === target.accountCode)
     );
 
     if (linkedVouchers.length > 0) {
       setAccounts((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: 'Inactive' } : a))
+        prev.map((a) => (a.id === target.id ? { ...a, status: 'Inactive' } : a))
       );
       logAudit(
         'Account Deactivated',
         'Chart of Accounts',
         target.accountCode,
-        `Account ${target.accountCode} (${target.accountName}) has ${linkedVouchers.length} linked vouchers. Changed status to Inactive instead of hard deleting.`
+        `Account ${target.accountCode} has ${linkedVouchers.length} linked vouchers. Deactivated instead of permanent deletion.`
       );
       return {
         success: true,
@@ -1674,7 +1814,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    setAccounts((prev) => {
+      const remaining = prev.filter((a) => a.id !== target.id);
+      return remaining.map((acc) => ({
+        ...acc,
+        isPostable: isLeafAccount(acc.id, remaining),
+      }));
+    });
+
     logAudit(
       'Account Deleted',
       'Chart of Accounts',
@@ -2565,50 +2712,171 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createVoucher = (
-    voucherData: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'>
+    voucherData: Omit<Voucher, 'id' | 'createdAt' | 'createdBy' | 'status'> & { status?: VoucherStatus }
   ): { success: boolean; error?: string; voucher?: Voucher } => {
-    // 1. Strict Validation: Total Debit MUST Equal Total Credit
-    const totalDebit = voucherData.entries.reduce((sum, e) => sum + (Number(e.debit) || 0), 0);
-    const totalCredit = voucherData.entries.reduce((sum, e) => sum + (Number(e.credit) || 0), 0);
-
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+    // 0. Authorization check at data-access layer
+    if (currentUserRole !== 'Super Admin' && currentUserRole !== 'Accountant') {
       return {
         success: false,
-        error: `Debit (PKR ${totalDebit.toLocaleString()}) does not equal Credit (PKR ${totalCredit.toLocaleString()}). Unbalanced vouchers cannot be posted!`,
+        error: `Unauthorized: User role "${currentUserRole}" is not permitted to create journal vouchers.`,
       };
     }
 
-    if (totalDebit <= 0) {
+    // 1. Duplicate Voucher Prevention
+    if (voucherData.voucherNo) {
+      const isDuplicate = vouchers.some(
+        (v) =>
+          v.voucherNo.trim().toLowerCase() === voucherData.voucherNo.trim().toLowerCase() &&
+          v.status !== 'Cancelled'
+      );
+      if (isDuplicate) {
+        return {
+          success: false,
+          error: `Duplicate voucher posting prevented: Voucher Number "${voucherData.voucherNo}" already exists in the system.`,
+        };
+      }
+    }
+
+    // 2. Strict Validation: Total Debit MUST Equal Total Credit
+    const validation = validateDoubleEntryVoucher(voucherData.entries);
+    if (!validation.isValid) {
       return {
         success: false,
-        error: 'Voucher amount must be greater than zero.',
+        error: validation.error,
       };
+    }
+
+    // 3. Validate that every line references a valid active postable account
+    for (let i = 0; i < voucherData.entries.length; i++) {
+      const entry = voucherData.entries[i];
+      const targetAcc = accounts.find((a) => a.id === entry.accountId || a.accountCode === entry.accountCode);
+      if (!targetAcc) {
+        return {
+          success: false,
+          error: `Line ${i + 1}: Account "${entry.accountId || entry.accountCode}" not found in Chart of Accounts.`,
+        };
+      }
+
+      const postCheck = canPostToAccount(targetAcc, accounts);
+      if (!postCheck.canPost) {
+        return {
+          success: false,
+          error: `Line ${i + 1}: ${postCheck.reason}`,
+        };
+      }
     }
 
     const id = `VOUCH-${Date.now()}`;
+    const status: VoucherStatus = voucherData.status || 'Posted';
+
     const newVoucher: Voucher = {
       ...voucherData,
       id,
-      totalDebit,
-      totalCredit,
+      totalDebit: validation.totalDebit,
+      totalCredit: validation.totalCredit,
       createdBy: currentUserRole,
-      status: 'Posted',
+      status,
       createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
     };
 
-    // 2. Post amounts directly to Account balances
+    // 3. Only post amounts directly to Account balances if status is 'Posted'
+    if (status === 'Posted') {
+      setAccounts((prev) => {
+        return prev.map((acc) => {
+          const matchingEntries = voucherData.entries.filter(
+            (e) => entryMatchesAccount(e, acc)
+          );
+          if (matchingEntries.length === 0) return acc;
+
+          let delta = 0;
+          matchingEntries.forEach((entry) => {
+            const deb = Number(entry.debit) || 0;
+            const cred = Number(entry.credit) || 0;
+
+            if (acc.category === 'Asset' || acc.category === 'Expense') {
+              delta += deb - cred;
+            } else {
+              delta += cred - deb;
+            }
+          });
+
+          return {
+            ...acc,
+            currentBalance: roundCurrency(acc.currentBalance + delta),
+          };
+        });
+      });
+    }
+
+    setVouchers((prev) => [newVoucher, ...prev]);
+
+    logAudit(
+      status === 'Posted' ? 'Voucher Posted' : 'Voucher Draft Created',
+      'Accounting',
+      newVoucher.voucherNo,
+      `${status === 'Posted' ? 'Posted' : 'Drafted'} ${newVoucher.voucherType} Voucher #${newVoucher.voucherNo} for PKR ${validation.totalDebit.toLocaleString()}`
+    );
+
+    return { success: true, voucher: newVoucher };
+  };
+
+  const reverseVoucher = (
+    id: string,
+    reason: string
+  ): { success: boolean; error?: string; reversalVoucher?: Voucher } => {
+    const original = vouchers.find((v) => v.id === id);
+    if (!original) return { success: false, error: 'Voucher not found.' };
+    if (original.status === 'Cancelled' || original.status === 'Reversed') {
+      return { success: false, error: `Voucher is already ${original.status.toLowerCase()}.` };
+    }
+
+    // Create flipped reversal lines (debit becomes credit, credit becomes debit)
+    const reversedEntries: VoucherEntry[] = original.entries.map((entry, idx) => ({
+      id: `VENT-REV-${Date.now()}-${idx + 1}`,
+      accountId: entry.accountId,
+      accountCode: entry.accountCode,
+      accountName: entry.accountName,
+      debit: entry.credit,
+      credit: entry.debit,
+      narration: `Reversal of ${original.voucherNo}: ${entry.narration || ''}`,
+      partyType: entry.partyType,
+      partyId: entry.partyId,
+      partyName: entry.partyName,
+    }));
+
+    const cleanVoucherNo = original.voucherNo.replace(/[^A-Za-z0-9]/g, '');
+    const reversalNo = `JV-REV-${cleanVoucherNo}`;
+    const reversalId = `VOUCH-REV-${Date.now()}`;
+
+    const reversalVoucher: Voucher = {
+      id: reversalId,
+      voucherNo: reversalNo,
+      date: new Date().toISOString().split('T')[0],
+      voucherType: 'Journal',
+      referenceNo: original.voucherNo,
+      narration: `Reversal of ${original.voucherNo}. Reason: ${reason}`,
+      entries: reversedEntries,
+      totalDebit: original.totalCredit,
+      totalCredit: original.totalDebit,
+      createdBy: currentUserRole,
+      status: 'Posted',
+      reversedVoucherId: original.id,
+      reversalReason: reason,
+      createdAt: new Date().toLocaleString('sv-SE').replace('T', ' '),
+    };
+
+    // Update account balances with reversal lines
     setAccounts((prev) => {
       return prev.map((acc) => {
-        const matchingEntries = voucherData.entries.filter((e) => e.accountId === acc.id);
+        const matchingEntries = reversedEntries.filter(
+          (e) => e.accountId === acc.id || e.accountCode === acc.accountCode
+        );
         if (matchingEntries.length === 0) return acc;
 
         let delta = 0;
         matchingEntries.forEach((entry) => {
           const deb = Number(entry.debit) || 0;
           const cred = Number(entry.credit) || 0;
-
-          // Asset & Expense normal balance is Debit (+Debit, -Credit)
-          // Liability, Equity & Income normal balance is Credit (+Credit, -Debit)
           if (acc.category === 'Asset' || acc.category === 'Expense') {
             delta += deb - cred;
           } else {
@@ -2618,52 +2886,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         return {
           ...acc,
-          currentBalance: acc.currentBalance + delta,
+          currentBalance: roundCurrency(acc.currentBalance + delta),
         };
       });
     });
 
-    setVouchers((prev) => [newVoucher, ...prev]);
+    // Mark original voucher as 'Reversed' and insert reversal voucher
+    setVouchers((prev) => [
+      reversalVoucher,
+      ...prev.map((v) =>
+        v.id === id
+          ? {
+              ...v,
+              status: 'Reversed' as VoucherStatus,
+              reversedVoucherId: reversalId,
+              reversalReason: reason,
+            }
+          : v
+      ),
+    ]);
 
     logAudit(
-      'Voucher Posted',
+      'Voucher Reversed',
       'Accounting',
-      newVoucher.voucherNo,
-      `Posted ${newVoucher.voucherType} Voucher #${newVoucher.voucherNo} for PKR ${totalDebit.toLocaleString()}`
+      original.voucherNo,
+      `Voucher #${original.voucherNo} reversed by Reversal Voucher #${reversalNo}. Reason: ${reason}`
     );
 
-    return { success: true, voucher: newVoucher };
+    return { success: true, reversalVoucher };
   };
 
   const cancelVoucher = (id: string, reason: string) => {
     const voucher = vouchers.find((v) => v.id === id);
-    if (!voucher || voucher.status === 'Cancelled') return;
+    if (!voucher || voucher.status === 'Cancelled' || voucher.status === 'Reversed') return;
 
     // 1. Reverse the effect on Account balances
-    setAccounts((prev) => {
-      return prev.map((acc) => {
-        const matchingEntries = voucher.entries.filter((e) => e.accountId === acc.id);
-        if (matchingEntries.length === 0) return acc;
+    if (voucher.status === 'Posted') {
+      setAccounts((prev) => {
+        return prev.map((acc) => {
+          const matchingEntries = voucher.entries.filter((e) => e.accountId === acc.id);
+          if (matchingEntries.length === 0) return acc;
 
-        let delta = 0;
-        matchingEntries.forEach((entry) => {
-          const deb = Number(entry.debit) || 0;
-          const cred = Number(entry.credit) || 0;
+          let delta = 0;
+          matchingEntries.forEach((entry) => {
+            const deb = Number(entry.debit) || 0;
+            const cred = Number(entry.credit) || 0;
 
-          // Inverse reversal
-          if (acc.category === 'Asset' || acc.category === 'Expense') {
-            delta -= deb - cred;
-          } else {
-            delta -= cred - deb;
-          }
+            // Inverse reversal
+            if (acc.category === 'Asset' || acc.category === 'Expense') {
+              delta -= deb - cred;
+            } else {
+              delta -= cred - deb;
+            }
+          });
+
+          return {
+            ...acc,
+            currentBalance: roundCurrency(acc.currentBalance + delta),
+          };
         });
-
-        return {
-          ...acc,
-          currentBalance: acc.currentBalance + delta,
-        };
       });
-    });
+    }
 
     // 2. Mark voucher as cancelled with audit metadata
     const cancelTimestamp = new Date().toLocaleString('sv-SE').replace('T', ' ');
@@ -2681,7 +2964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     logAudit(
-      'Voucher Cancelled / Reversed',
+      'Voucher Cancelled',
       'Accounting',
       voucher.voucherNo,
       `Voucher #${voucher.voucherNo} cancelled. Reason: ${reason}`
@@ -3217,8 +3500,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     // Auto-create Receipt Voucher
-    const receiptAcc = accounts.find((a) => a.id === accountId) || accounts[1]; // Meezan Bank
-    const recvAcc = accounts.find((a) => a.id === 'ACC-1030') || accounts[3]; // Receivables
+    const receiptAcc = accounts.find((a) => a.id === accountId) || accounts.find((a) => a.accountCode === '1121' || a.accountCode === '1020') || accounts[1];
+    const recvAcc = accounts.find((a) => a.accountCode === '1131' || a.id === 'ACC-1131' || a.accountCode === '1030' || a.id === 'ACC-1030') || accounts.find((a) => a.category === 'Asset' && a.accountName.toLowerCase().includes('receivable')) || accounts[3];
 
     createVoucher({
       voucherNo: `RV-${Date.now().toString().slice(-6)}`,
@@ -3454,8 +3737,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const importDatabaseJSON = (jsonString: string): boolean => {
     try {
-      const parsed = JSON.parse(jsonString);
-      if (parsed.clients && parsed.guards && parsed.vouchers) {
+      const rawParsed = JSON.parse(jsonString);
+      const parsed =
+        rawParsed.data && typeof rawParsed.data === 'object'
+          ? rawParsed.data
+          : rawParsed;
+
+      if (parsed.accounts || parsed.vouchers || parsed.clients || parsed.guards) {
         if (parsed.companySettings) setCompanySettings(parsed.companySettings);
         if (parsed.securitySettings) {
           setSecuritySettings({
@@ -3468,31 +3756,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             isLocked: false,
           });
         }
-        setClients(parsed.clients);
-        setSites(parsed.sites || []);
-        setGuards(parsed.guards || []);
-        setGuardAssignments(parsed.guardAssignments || []);
-        setWeapons(parsed.weapons || []);
-        setWeaponAssignments(parsed.weaponAssignments || []);
-        setProducts(parsed.products || []);
-        setStockTransactions(parsed.stockTransactions || []);
-        setGuardIssuedItems(parsed.guardIssuedItems || []);
-        setAccounts(parsed.accounts || []);
-        setVouchers(parsed.vouchers || []);
-        if (parsed.openingBalances && Array.isArray(parsed.openingBalances)) {
-          setOpeningBalances(parsed.openingBalances);
-        }
-        if (parsed.openingBatches && Array.isArray(parsed.openingBatches)) {
-          setOpeningBatches(parsed.openingBatches);
-        }
-        if (parsed.openingBalanceAudits && Array.isArray(parsed.openingBalanceAudits)) {
-          setOpeningBalanceAudits(parsed.openingBalanceAudits);
-        }
-        setSalarySlips(parsed.salarySlips || []);
-        setClientInvoices(parsed.clientInvoices || []);
-        setAuditLogs(parsed.auditLogs || []);
-        if (parsed.attendanceRecords && Array.isArray(parsed.attendanceRecords)) {
-          setAttendanceRecords(parsed.attendanceRecords);
+        if (Array.isArray(parsed.clients)) setClients(parsed.clients);
+        if (Array.isArray(parsed.sites)) setSites(parsed.sites);
+        if (Array.isArray(parsed.guards)) setGuards(parsed.guards);
+        if (Array.isArray(parsed.guardAssignments)) setGuardAssignments(parsed.guardAssignments);
+        if (Array.isArray(parsed.weapons)) setWeapons(parsed.weapons);
+        if (Array.isArray(parsed.weaponAssignments)) setWeaponAssignments(parsed.weaponAssignments);
+        if (Array.isArray(parsed.products)) setProducts(parsed.products);
+        if (Array.isArray(parsed.stockTransactions)) setStockTransactions(parsed.stockTransactions);
+        if (Array.isArray(parsed.guardIssuedItems)) setGuardIssuedItems(parsed.guardIssuedItems);
+        if (Array.isArray(parsed.accounts)) setAccounts(migrateLegacyAccountsToMultiLevel(parsed.accounts));
+        if (Array.isArray(parsed.vouchers)) setVouchers(parsed.vouchers);
+        if (Array.isArray(parsed.openingBalances)) setOpeningBalances(parsed.openingBalances);
+        if (Array.isArray(parsed.openingBatches)) setOpeningBatches(parsed.openingBatches);
+        if (Array.isArray(parsed.openingBalanceAudits)) setOpeningBalanceAudits(parsed.openingBalanceAudits);
+        if (Array.isArray(parsed.salarySlips)) setSalarySlips(parsed.salarySlips);
+        if (Array.isArray(parsed.clientInvoices)) setClientInvoices(parsed.clientInvoices);
+        if (Array.isArray(parsed.auditLogs)) setAuditLogs(parsed.auditLogs);
+        if (Array.isArray(parsed.attendanceRecords)) setAttendanceRecords(parsed.attendanceRecords);
+        if (Array.isArray(parsed.financeAccounts)) setFinanceAccounts(parsed.financeAccounts);
+        if (Array.isArray(parsed.expenseCategories)) setExpenseCategories(parsed.expenseCategories);
+        if (Array.isArray(parsed.parties)) setParties(parsed.parties);
+        if (Array.isArray(parsed.cashTransactions)) setCashTransactions(parsed.cashTransactions);
+        if (parsed.currentFiscalYear && typeof parsed.currentFiscalYear === 'string') {
+          setCurrentFiscalYear(parsed.currentFiscalYear);
         }
 
         logAudit('Database Restored', 'Backup & Restore', 'SYSTEM-RESTORE', 'Restored system database from external JSON file');
@@ -4274,6 +4561,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteAccount,
         createVoucher,
         cancelVoucher,
+        reverseVoucher,
         deleteVoucher,
         generateSalarySlip,
         updateSalarySlipStatus,

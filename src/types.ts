@@ -357,19 +357,43 @@ export interface FiscalYearOpeningBatch {
 
 export interface Account {
   id: string;
-  accountCode: string; // e.g. 1010, 1020, 4010, 5010
+  accountCode: string; // e.g. 1000, 1100, 1110, 1111
   accountName: string;
   category: AccountCategory;
-  subcategory: string;
+  subcategory?: string;
+  parentId?: string | null; // null for Level 1 root accounts
+  parentCode?: string | null;
+  level: number; // 1 = Main, 2 = Sub, 3 = Sub-Sub, 4+ = Detail/Leaf
+  path?: string; // e.g. "Assets > Current Assets > Cash & Bank > Cash in Hand"
+  isPostable: boolean; // Only leaf accounts without active sub-accounts can be posted to directly
   openingBalance: number;
   openingBalanceType?: BalanceType;
   currentBalance: number;
-  isSystem: boolean;
+  isSystem?: boolean;
   status: 'Active' | 'Inactive';
   description?: string;
+  natureType?: string; // e.g. "Salary Payables A/C", "Cash in Hand", "Client Receivable", "Operating Expense"
+  effectiveDate?: string; // Effective start date of account e.g. "2026-07-01"
+  location?: string; // Branch / Station / Location e.g. "Faisalabad HO", "Lahore Regional", "Islamabad Base"
+  employeePartyType?: 'Staff' | 'Guard' | 'Officer' | 'Vendor' | 'Client' | 'General'; // Employee or counterparty designation where applicable
+  legacyCode?: string; // Legacy account code prior to migration e.g. "2010030011"
+  createdBy?: string;
+  createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface AccountNode extends Account {
+  children: AccountNode[];
+  rollupBalance: number; // Consolidated balance of this account and all children
+  directBalance: number; // Direct un-rolled balance of this single account
+  totalDebitOpening: number;
+  totalCreditOpening: number;
+  leafCount: number;
 }
 
 export type VoucherType = 'General' | 'Receipt' | 'Payment' | 'Journal' | 'Contra';
+export type VoucherStatus = 'Draft' | 'Posted' | 'Cancelled' | 'Reversed';
 
 export interface VoucherEntry {
   id: string;
@@ -379,7 +403,7 @@ export interface VoucherEntry {
   debit: number;
   credit: number;
   narration?: string;
-  partyType?: 'Client' | 'Guard' | 'Vendor' | 'Other';
+  partyType?: 'Client' | 'Guard' | 'Vendor' | 'Staff' | 'Other';
   partyId?: string;
   partyName?: string;
 }
@@ -395,9 +419,14 @@ export interface Voucher {
   totalDebit: number;
   totalCredit: number;
   createdBy: string;
-  status: 'Posted' | 'Cancelled';
+  approvedBy?: string;
+  postedBy?: string;
+  postedAt?: string;
+  status: VoucherStatus;
   cancelledReason?: string;
   cancelledAt?: string;
+  reversedVoucherId?: string;
+  reversalReason?: string;
   createdAt: string;
 }
 

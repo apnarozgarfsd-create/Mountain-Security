@@ -66,10 +66,11 @@ export const BackupRestoreView: React.FC = () => {
       const content = event.target?.result as string;
       try {
         const parsed = JSON.parse(content);
-        if (!parsed || (!parsed.guards && !parsed.clients && !parsed.inventoryCategories)) {
+        const data = parsed?.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+        if (!data || (!data.guards && !data.clients && !data.inventoryCategories && !data.accounts && !data.vouchers)) {
           setRestoreNotice({
             type: 'error',
-            message: 'Invalid SGMS backup format. File does not contain valid security management entities.',
+            message: 'Invalid SGMS backup format. File does not contain valid security management or accounting entities.',
           });
           return;
         }

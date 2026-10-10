@@ -21,6 +21,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatPKR } from '../../utils/formatters';
 import { BalanceType } from '../../types';
+import { entryMatchesAccount } from '../../services/accountingService';
 
 export const ReportsView: React.FC = () => {
   const {
@@ -432,7 +433,7 @@ export const ReportsView: React.FC = () => {
               v.narration?.toLowerCase().includes('opening balance')
             ) return;
             v.entries.forEach((e) => {
-              if (e.accountId === acc.id) {
+              if (entryMatchesAccount(e, acc)) {
                 periodDr += Number(e.debit) || 0;
                 periodCr += Number(e.credit) || 0;
               }
@@ -616,7 +617,7 @@ export const ReportsView: React.FC = () => {
                         <td className="py-2 px-3 font-bold text-blue-400">{r.account.accountCode}</td>
                         <td className="py-2 px-3 font-sans font-medium text-slate-200">
                           <div>{r.account.accountName}</div>
-                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory}</div>
+                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory || r.account.path || ''}</div>
                         </td>
                         <td className="py-2 px-3 font-sans text-slate-400 border-r border-slate-800">
                           <span className="text-[9px] px-1.5 py-0.2 bg-slate-900 border border-slate-700/60 rounded">
@@ -647,7 +648,7 @@ export const ReportsView: React.FC = () => {
                         <td className="py-2.5 px-4 font-bold text-blue-400">{r.account.accountCode}</td>
                         <td className="py-2.5 px-4 font-sans font-medium text-slate-200">
                           <div>{r.account.accountName}</div>
-                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory}</div>
+                          <div className="text-[10px] text-slate-500 font-sans">{r.account.subcategory || r.account.path || ''}</div>
                         </td>
                         <td className="py-2.5 px-4 font-sans text-slate-400">
                           <span className="text-[10px] px-2 py-0.5 bg-slate-900 border border-slate-800 rounded">
@@ -777,7 +778,7 @@ export const ReportsView: React.FC = () => {
             v.narration?.toLowerCase().includes('opening balance')
           ) return;
           v.entries.forEach((e, idx) => {
-            if (e.accountId === selectedLedgerAccount?.id) {
+            if (selectedLedgerAccount && entryMatchesAccount(e, selectedLedgerAccount)) {
               const d = Number(e.debit) || 0;
               const c = Number(e.credit) || 0;
               if (isNormalDebit) {
@@ -805,7 +806,8 @@ export const ReportsView: React.FC = () => {
           (a) =>
             a.accountName.toLowerCase().includes(ledgerSearchTerm.toLowerCase()) ||
             a.accountCode.includes(ledgerSearchTerm) ||
-            a.subcategory.toLowerCase().includes(ledgerSearchTerm.toLowerCase())
+            (a.subcategory ? a.subcategory.toLowerCase().includes(ledgerSearchTerm.toLowerCase()) : false) ||
+            (a.path ? a.path.toLowerCase().includes(ledgerSearchTerm.toLowerCase()) : false)
         );
 
         return (
@@ -849,7 +851,7 @@ export const ReportsView: React.FC = () => {
                     </span>
                     <span className="text-white font-bold text-sm">{selectedLedgerAccount.accountName}</span>
                     <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded uppercase font-bold">
-                      {selectedLedgerAccount.category} • {selectedLedgerAccount.subcategory}
+                      {selectedLedgerAccount.category} • {selectedLedgerAccount.subcategory || selectedLedgerAccount.path || 'General'}
                     </span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1 flex items-center gap-3">

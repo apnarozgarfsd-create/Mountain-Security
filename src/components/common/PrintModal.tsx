@@ -83,20 +83,38 @@ export const PrintModal: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs mb-4 bg-slate-50 p-3 rounded border border-slate-200">
-                <div>
-                  <span className="text-slate-500 font-semibold">Reference / Cheque #:</span>
-                  <p className="font-bold text-slate-900">{printPayload.data.referenceNo || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-semibold">Created By:</span>
-                  <p className="font-bold text-slate-900">{printPayload.data.createdBy} (Status: {printPayload.data.status})</p>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-slate-500 font-semibold">Narration / Description:</span>
-                  <p className="font-bold text-slate-900">{printPayload.data.narration}</p>
-                </div>
-              </div>
+              {(() => {
+                const voucherData = printPayload.data;
+                const payerOrBeneficiary =
+                  voucherData.payerName ||
+                  voucherData.entries?.find((e: any) => e.partyName)?.partyName ||
+                  (voucherData.voucherType === 'Receipt'
+                    ? (voucherData.entries?.find((e: any) => (Number(e.credit) || 0) > 0)?.accountName || 'Client / Customer')
+                    : (voucherData.entries?.find((e: any) => (Number(e.debit) || 0) > 0)?.accountName || 'Vendor / Employee'));
+
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs mb-4 bg-slate-50 p-3 rounded border border-slate-200">
+                    <div>
+                      <span className="text-slate-500 font-semibold">Reference / Cheque #:</span>
+                      <p className="font-bold text-slate-900">{voucherData.referenceNo || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-semibold">
+                        {voucherData.voucherType === 'Receipt' ? 'Payer / Received From:' : 'Payee / Paid To:'}
+                      </span>
+                      <p className="font-bold text-slate-900">{payerOrBeneficiary}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-semibold">Created By:</span>
+                      <p className="font-bold text-slate-900">{voucherData.createdBy} (Status: {voucherData.status})</p>
+                    </div>
+                    <div className="col-span-2 sm:col-span-3">
+                      <span className="text-slate-500 font-semibold">Narration / Description:</span>
+                      <p className="font-bold text-slate-900">{voucherData.narration}</p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Table */}
               <table className="w-full text-xs border border-slate-200 rounded mb-4">

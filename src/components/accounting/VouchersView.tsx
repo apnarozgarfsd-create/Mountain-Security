@@ -56,7 +56,7 @@ export const VouchersView: React.FC = () => {
   >([
     {
       id: '1',
-      accountId: accounts[1]?.id || accounts[0]?.id, // Bank or Cash
+      accountId: accounts.find((a) => a.accountCode === '1121' || a.accountCode === '1020')?.id || accounts[0]?.id, // Bank or Cash
       debit: 50000,
       credit: 0,
       narration: 'Receipt from client',
@@ -65,7 +65,7 @@ export const VouchersView: React.FC = () => {
     },
     {
       id: '2',
-      accountId: 'ACC-1030', // Receivables
+      accountId: accounts.find((a) => a.accountCode === '1131' || a.accountCode === '1030')?.id || accounts[1]?.id, // Receivables
       debit: 0,
       credit: 50000,
       narration: 'Receivable cleared',
@@ -88,14 +88,14 @@ export const VouchersView: React.FC = () => {
       setEntries([
         {
           id: '1',
-          accountId: accounts.find((a) => a.accountCode === '1020')?.id || accounts[0].id,
+          accountId: accounts.find((a) => a.accountCode === '1121' || a.accountCode === '1020')?.id || accounts[0].id,
           debit: 100000,
           credit: 0,
           narration: 'Payment received into bank',
         },
         {
           id: '2',
-          accountId: accounts.find((a) => a.accountCode === '1030')?.id || accounts[1].id,
+          accountId: accounts.find((a) => a.accountCode === '1131' || a.accountCode === '1030')?.id || accounts[1].id,
           debit: 0,
           credit: 100000,
           narration: 'Client account credited',
@@ -105,14 +105,14 @@ export const VouchersView: React.FC = () => {
       setEntries([
         {
           id: '1',
-          accountId: accounts.find((a) => a.accountCode === '5010')?.id || accounts[0].id,
+          accountId: accounts.find((a) => a.accountCode === '5111' || a.accountCode === '5010')?.id || accounts[0].id,
           debit: 40000,
           credit: 0,
           narration: 'Guard salary / site operational expense',
         },
         {
           id: '2',
-          accountId: accounts.find((a) => a.accountCode === '1010')?.id || accounts[1].id,
+          accountId: accounts.find((a) => a.accountCode === '1111' || a.accountCode === '1010')?.id || accounts[1].id,
           debit: 0,
           credit: 40000,
           narration: 'Cash paid from drawer',
@@ -122,14 +122,14 @@ export const VouchersView: React.FC = () => {
       setEntries([
         {
           id: '1',
-          accountId: accounts.find((a) => a.accountCode === '1010')?.id || accounts[0].id,
+          accountId: accounts.find((a) => a.accountCode === '1111' || a.accountCode === '1010')?.id || accounts[0].id,
           debit: 50000,
           credit: 0,
           narration: 'Cash in drawer increased (Bank withdrawal)',
         },
         {
           id: '2',
-          accountId: accounts.find((a) => a.accountCode === '1020')?.id || accounts[1].id,
+          accountId: accounts.find((a) => a.accountCode === '1121' || a.accountCode === '1020')?.id || accounts[1].id,
           debit: 0,
           credit: 50000,
           narration: 'Meezan Bank cheque withdrawal',
@@ -529,8 +529,8 @@ export const VouchersView: React.FC = () => {
                           className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white font-medium"
                         >
                           {accounts.map((acc) => (
-                            <option key={acc.id} value={acc.id}>
-                              {acc.accountCode} - {acc.accountName} ({acc.category})
+                            <option key={acc.id} value={acc.id} disabled={acc.isPostable === false}>
+                              {acc.level ? '• '.repeat(Math.max(0, acc.level - 1)) : ''}{acc.accountCode} - {acc.accountName} {acc.isPostable === false ? '(Summary - Not Postable)' : `(${acc.category})`}
                             </option>
                           ))}
                         </select>
